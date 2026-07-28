@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.venv/
+venv/
+env/
+
+# Node / frontend
+node_modules/
+dist/
+build/
+*.log
+
+# Local data and datasets
+amicorpus/
+recordings/
+*.wav
+*.mp3
+*.m4a
+*.flac
+
+# OS/editor
+.DS_Store
+.vscode/
