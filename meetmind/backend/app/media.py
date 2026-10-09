@@ -6,7 +6,7 @@ import threading
 import wave
 from pathlib import Path
 
-from .ingestion import IngestionError, MAX_CHARACTERS, segment
+from .ingestion import IngestionError, MAX_CHARACTERS, clean
 
 AUDIO_FORMATS = {".wav", ".mp3", ".m4a", ".ogg", ".flac", ".aac"}
 VIDEO_FORMATS = {".mp4", ".webm", ".mov", ".mkv"}
@@ -50,7 +50,12 @@ def transcribe_media(path: Path, update):
             _model = WhisperModel(MODEL_NAME, device="cpu", compute_type="int8",
                                   cpu_threads=max(1, min(4, os.cpu_count() or 1)))
         update("transcribing", 25, "Transcribing speech locally")
-        stream, info = _model.transcribe(str(wav), language="en", beam_size=5,
+        # FFmpeg already produced mono 16 kHz PCM. Pass normalized samples directly
+        # to avoid decoding twice and depending on PyAV's changing open() options.
+        import numpy as np
+        with wave.open(str(wav), "rb") as audio:
+            samples = np.frombuffer(audio.readframes(audio.getnframes()), dtype="<i2").astype(np.float32) / 32768.0
+        stream, info = _model.transcribe(samples, language="en", beam_size=5,
             vad_filter=True, condition_on_previous_text=False)
         segments = []
         characters = 0
@@ -60,7 +65,9 @@ def transcribe_media(path: Path, update):
             characters += len(item.text)
             if characters > MAX_CHARACTERS:
                 raise IngestionError("Transcription exceeds the supported transcript size. Split the recording.")
-            segments.append(segment(item.text, len(segments) + 1, item.start, item.end))
+            text = clean(item.text)
+            segments.append({"id": len(segments) + 1, "speaker": None, "text": text,
+                             "source": text, "start": item.start, "end": item.end})
             update("transcribing", min(94, 25 + int(69 * item.end / duration)),
                    f"Transcribed {min(item.end, duration):.0f} of {duration:.0f} seconds")
     if not segments:

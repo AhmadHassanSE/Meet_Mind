@@ -54,7 +54,10 @@ def parse_captions(text, suffix):
     if suffix == ".vtt":
         if not text.startswith("WEBVTT"):
             raise IngestionError("VTT files must start with WEBVTT")
-        text = re.sub(r"^WEBVTT[^\n]*(?:\n|$)", "", text, count=1)
+        parts = re.split(r"\n[ \t]*\n", text, maxsplit=1)
+        if len(parts) != 2:
+            raise IngestionError("VTT header must be followed by a blank line and caption cues")
+        text = parts[1]
     result = []
     for block in re.split(r"\n\s*\n", text.strip()):
         lines = block.strip().splitlines()
@@ -70,11 +73,16 @@ def parse_captions(text, suffix):
         if end <= start:
             raise IngestionError("Caption end time must follow its start time")
         cue = " ".join(lines[position + 1:])
-        voice = re.search(r"<v(?:\.[^\s>]+)?\s+([^>]+)>", cue)
-        speaker = html.unescape(voice[1]).strip() if voice else None
-        cue = html.unescape(re.sub(r"<[^>]*>", "", cue))
-        if clean(cue):
-            result.append(segment(cue, len(result) + 1, start, end, speaker))
+        voices = list(re.finditer(r"<v(?:\.[^\s>]+)?\s+([^>]+)>(.*?)(?:</v>|(?=<v[\s.])|$)", cue))
+        if voices:
+            for voice in voices:
+                spoken = html.unescape(re.sub(r"<[^>]*>", "", voice[2]))
+                if clean(spoken):
+                    result.append(segment(spoken, len(result) + 1, start, end, html.unescape(voice[1]).strip()))
+        else:
+            cue = html.unescape(re.sub(r"<[^>]*>", "", cue))
+            if clean(cue):
+                result.append(segment(cue, len(result) + 1, start, end))
     return result
 
 

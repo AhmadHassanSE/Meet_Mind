@@ -4,7 +4,7 @@ Fresh implementation. The sibling `meeting-transcription-agent` directory is ref
 
 ## Run locally (two PowerShell terminals)
 
-Prerequisites: Node.js, uv, Ollama running with `llama3.2:latest` installed.
+Prerequisites: Node.js, uv, Python 3.13 (uv can provision it), FFmpeg on PATH, and Ollama running with `llama3.2:latest` installed. Run the commands below from the repository root in separate terminals.
 
 Backend:
 ```powershell
@@ -22,11 +22,26 @@ npm.cmd run dev
 
 Open the localhost URL printed by Vite. Development requests proxy to the local backend. API documentation: http://127.0.0.1:8000/docs
 
-Configuration: backend environment variables `OLLAMA_URL`, `OLLAMA_MODEL`, `MEETMIND_DB`. Defaults: localhost:11434, llama3.2:latest, backend/meetmind.db. No hosted AI provider or API key is used. Installing dependencies/models requires internet; model inference uses the configured local Ollama service.
+Configuration: backend environment variables `OLLAMA_URL`, `OLLAMA_MODEL`, `MEETMIND_DB`, `WHISPER_MODEL`, `FFMPEG_PATH`. Defaults: localhost:11434, llama3.2:latest, backend/meetmind.db, base.en, ffmpeg. Frontend `MEETMIND_BACKEND_URL` overrides the development proxy target (default localhost:8000). No hosted AI provider or API key is used. Dependency/model downloads require internet; meeting transcription and extraction run locally. First media ingestion downloads Whisper weights if not cached, so prepare the model before an offline demo. A local model directory can be supplied as `WHISPER_MODEL`.
 
 ## Current scope
 
-TXT/basic VTT ingestion, SQLite persistence, source-linked structured Ollama extraction, meeting library/detail, health status and explicit errors. Extraction suggestions all require review. Source references are validated, but semantic accuracy and hallucinations are not guaranteed. Re-extraction replaces previous results. Owner/deadline editing, robust VTT cue handling, spaCy, baseline evaluation, confidence module and AMI dataset work are pending. No external actions execute.
+The four upload tabs support:
+
+| Input | Formats | Processing |
+|---|---|---|
+| Text / paste | Plain text | Normalize speaker turns |
+| Transcript file | TXT, MD, DOCX, VTT, SRT | Extract text; retain available caption timing and speaker labels |
+| Audio | WAV, MP3, M4A, OGG, FLAC, AAC | FFmpeg → mono 16 kHz PCM → local faster-whisper |
+| Meeting recording | MP4, WEBM, MOV, MKV | Extract audio → same local transcription pipeline |
+
+Transcript files: 2 MB maximum and 500,000 normalized characters. Pasted text: 500,000 characters. Media: 200 MB and two hours maximum. Actual codec support depends on the installed FFmpeg build. Only English speech is currently supported. Audio/video speaker labels remain unknown; diarization and live Google Meet/Teams connections are future work. A silent recording or video without an audio track produces an explicit failure.
+
+Jobs are queued (one worker, three total admitted jobs), decoded, transcribed and saved. Polling progress comes from real backend stages/decoded time, not a simulated timer. Active job IDs survive browser refresh via localStorage. Restarting the backend marks unfinished jobs failed; re-upload is required (jobs do not auto-resume). Temporary media is deleted when a job finishes or fails; forced process termination may leave OS temporary files. Original recordings are not retained in the application database. Use a single backend process, without multiple workers, for this local job implementation. Cancellation is not implemented.
+
+All paths produce the same transcript segment fields: `id`, `speaker`, `text`, `source`, `start`, `end`. Meeting metadata includes source type, original filename and transcription model/duration where applicable. TXT/JSON exports are available for every meeting; VTT export requires timestamps on all segments.
+
+SQLite persistence, meeting library/detail, health status and source-linked Ollama extraction remain available. Long transcripts are batched for extraction, preserving segment IDs; a single oversized utterance is rejected explicitly. Batching can miss context spanning batch boundaries. Extraction suggestions require review; source references are validated but semantic correctness is not guaranteed. Re-extraction replaces previous results. Owner/deadline editing, spaCy, baseline evaluation, confidence module and AMI dataset work are pending. No external actions execute.
 
 Ollama is the local LLM backend, not evidence of BERT fine-tuning. The proposal's BERT milestone remains distinct unless the supervisor accepts a documented method change. SQLite is a temporary local foundation; PostgreSQL remains the proposed relational target. No authentication or production deployment is included.
 
@@ -37,5 +52,20 @@ uv run pytest
 cd ..\frontend
 npm.cmd run build
 ```
+
+For real decoder/model smoke checks, from `meetmind/backend` run:
+```powershell
+uv run python -m scripts.smoke_media path/to/speech.wav path/to/recording.mp4
+```
+This uses an isolated temporary database and checks real media jobs plus transcript downloads. Use short, non-sensitive fixtures with speech. It is not an accuracy benchmark.
+
+For browser smoke checks, start backend/frontend against a dedicated test database (`MEETMIND_DB`), then from `meetmind/frontend` run `node scripts/smoke-ui.cjs`. Google Chrome is required. `MEETMIND_UI_URL` selects the frontend URL. This creates a fixture meeting in that database; it verifies caption upload, timing, persistence, validation and narrow-screen layout. Optionally set `MEETMIND_MEDIA_FIXTURE` to a short speech WAV containing "send the project report by Friday" to exercise actual media transcription through the browser as well.
+
+Prepare Whisper before evaluation (backend directory):
+```powershell
+uv run python -c "from faster_whisper import WhisperModel; WhisperModel('base.en', device='cpu', compute_type='int8')"
+```
+
+API: `POST /api/meetings` (pasted JSON); `POST /api/ingestion/transcript` and `/api/ingestion/media` (multipart `title` + `file`); `GET /api/ingestion/jobs/{id}`; `GET /api/meetings/{id}/transcript?format=txt|json|vtt`. Media uploads return HTTP 202; invalid uploads return 422, oversized media 413, full queue 429, and missing FFmpeg 503. Decoding/transcription failures are reported by the job's `failed` state, without creating an empty meeting.
 
 AI-assisted code must be reviewed and understood by its owners; disclose assistance in the evaluation report. No research performance results are claimed yet.

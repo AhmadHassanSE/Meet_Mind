@@ -19,6 +19,12 @@ def test_srt_and_plain_numeric_lines():
     assert parse_transcript(b'2026\nA deadline: discuss it', '.txt')[0]['text'] == '2026'
 
 
+def test_vtt_header_metadata_and_multiple_voices():
+    result = parse_transcript(b'WEBVTT meeting\nKind: captions\nLanguage: en\n\n00:01.000 --> 00:03.000\n<v Sara>Send report.</v><v Ahmed>Book room.</v>\n', '.vtt')
+    assert [(s['speaker'], s['text']) for s in result] == [('Sara', 'Send report.'), ('Ahmed', 'Book room.')]
+    assert [s['id'] for s in result] == [1, 2]
+
+
 def test_docx_paragraphs():
     stream = io.BytesIO()
     with zipfile.ZipFile(stream, 'w') as archive:
