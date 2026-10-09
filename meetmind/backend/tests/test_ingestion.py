@@ -42,3 +42,29 @@ def test_upload_api_preserves_source_and_rejects_without_saving(tmp_path, monkey
     assert response.json()['segments'][0]['speaker'] == 'Sara'
     assert client.post('/api/ingestion/transcript', data={'title': 'Bad'}, files={'file': ('bad.docx', b'bad')}).status_code == 422
     assert len(client.get('/api/meetings').json()) == 1
+
+
+def test_transcript_downloads_and_timestamp_roundtrip(tmp_path, monkeypatch):
+    monkeypatch.setattr(main, 'DB_PATH', tmp_path / 'test.db')
+    client = TestClient(main.app)
+    original = b'WEBVTT\n\n00:01.000 --> 00:02.500\n<v Sara>Send the report.</v>\n'
+    meeting = client.post('/api/ingestion/transcript', data={'title': 'Captions'}, files={'file': ('meeting.vtt', original)}).json()
+    base = f'/api/meetings/{meeting["id"]}/transcript'
+    assert client.get(base + '?format=json').json()['segments'] == meeting['segments']
+    exported = client.get(base + '?format=vtt')
+    assert exported.status_code == 200
+    assert parse_transcript(exported.content, '.vtt') == meeting['segments']
+    assert 'attachment' in exported.headers['content-disposition']
+    assert client.get(base + '?format=exe').status_code == 422
+    plain = client.post('/api/meetings', json={'title': 'Text', 'transcript': 'Hello'}).json()
+    assert client.get(f'/api/meetings/{plain["id"]}/transcript?format=vtt').status_code == 422
+
+
+def test_extraction_batches_preserve_all_ids_and_reject_oversized_turn():
+    from fastapi import HTTPException
+    segments = [{'id': i, 'text': 'a' * 6000} for i in range(1, 6)]
+    batches = main.extraction_batches(segments)
+    assert len(batches) == 5
+    assert [s['id'] for batch in batches for s in batch] == list(range(1, 6))
+    with pytest.raises(HTTPException):
+        main.extraction_batches([{'id': 1, 'text': 'a' * 13000}])
