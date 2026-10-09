@@ -8,8 +8,9 @@ from pathlib import Path
 from uuid import uuid4
 
 import httpx
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from pydantic import BaseModel, Field
+from .ingestion import IngestionError, parse_text, parse_transcript, MAX_TEXT_BYTES
 
 DB_PATH = Path(os.getenv("MEETMIND_DB", str(Path(__file__).parents[1] / "meetmind.db")))
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434")
@@ -31,7 +32,7 @@ def connect():
 
 class MeetingInput(BaseModel):
     title: str = Field(min_length=1, max_length=200)
-    transcript: str = Field(min_length=1, max_length=16000)
+    transcript: str = Field(min_length=1, max_length=500_000)
 
 
 class ExtractedAction(BaseModel):
@@ -46,15 +47,9 @@ class Extraction(BaseModel):
 
 
 def segments_from_text(text):
-    segments = []
-    for line in text.splitlines():
-        line = line.strip()
-        if not line or line == "WEBVTT" or "-->" in line or line.isdigit():
-            continue
-        match = re.match(r"^([^:]{1,60}):\s*(.+)$", line)
-        segments.append({"id": len(segments) + 1, "speaker": match[1] if match else None,
-                         "text": match[2] if match else line, "source": line})
-    return segments
+    if text.lstrip().startswith("WEBVTT"):
+        return parse_transcript(text.encode(), ".vtt")
+    return parse_text(text)
 
 
 def save(meeting):
@@ -94,13 +89,37 @@ def meetings():
 def create_meeting(data: MeetingInput):
     if not data.title.strip() or not data.transcript.strip():
         raise HTTPException(422, "Title and transcript cannot be blank")
-    segments = segments_from_text(data.transcript)
+    try:
+        segments = segments_from_text(data.transcript)
+    except IngestionError as error:
+        raise HTTPException(422, str(error)) from error
     if not segments:
         raise HTTPException(422, "No transcript utterances found")
     meeting = {"id": str(uuid4()), "title": data.title.strip(), "transcript": data.transcript,
-               "segments": segments, "actions": [], "status": "uploaded", "model": None}
+               "segments": segments, "actions": [], "status": "uploaded", "model": None,
+               "source_type": "text", "filename": None}
     save(meeting)
     return meeting
+
+
+@app.post("/api/ingestion/transcript", status_code=201)
+async def upload_transcript(title: str = Form(..., min_length=1, max_length=200), file: UploadFile = File(...)):
+    try:
+        if not title.strip():
+            raise IngestionError("Meeting title cannot be blank")
+        suffix = Path(file.filename or "").suffix.lower()
+        data = await file.read(MAX_TEXT_BYTES + 1)
+        segments = parse_transcript(data, suffix)
+        meeting = {"id": str(uuid4()), "title": title.strip(),
+                   "transcript": "\n".join(item["source"] for item in segments),
+                   "segments": segments, "actions": [], "status": "uploaded", "model": None,
+                   "source_type": suffix.lstrip("."), "filename": Path(file.filename or "").name}
+        save(meeting)
+        return meeting
+    except IngestionError as error:
+        raise HTTPException(422, str(error)) from error
+    finally:
+        await file.close()
 
 
 @app.get("/api/meetings/{meeting_id}")
