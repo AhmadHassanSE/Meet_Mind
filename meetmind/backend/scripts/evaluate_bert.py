@@ -19,12 +19,18 @@ def main():
     parser.add_argument('--data', type=Path, default=Path('data/ami-da-v1'))
     parser.add_argument('--split', choices=['validation', 'test'], default='validation')
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--device', choices=['auto', 'cpu', 'cuda'], default='auto')
     args = parser.parse_args()
     if args.output.exists():
         raise ValueError('Preserve the existing evaluation: choose a new output file')
     train, manifest = load_split(args.data, 'train')
     rows, _ = load_split(args.data, args.split)
     classifier = DialogueClassifier(args.checkpoint)
+    import torch
+    if args.device == 'cuda' and not torch.cuda.is_available():
+        raise ValueError('CUDA requested but unavailable')
+    device = torch.device('cuda' if torch.cuda.is_available() and args.device != 'cpu' else 'cpu')
+    classifier.model.to(device)
     manifest_hash = sha256(args.data / 'manifest.json')
     if classifier.metadata['dataset_manifest_sha256'] != manifest_hash:
         raise ValueError('Checkpoint was trained with a different dataset manifest')
@@ -41,14 +47,13 @@ def main():
     baseline_labels = baseline.predict(texts(rows)).tolist()
     predictions = []
     # Prepared context must remain exactly as in training, including pilot sampling.
-    import torch
     torch.set_num_threads(cfg.get('cpu_threads', 4))
     with torch.inference_mode():
         for offset in range(0, len(rows), 64):
             batch = rows[offset:offset + 64]
             tokens = classifier.tokenizer([r['text'] for r in batch], [r['context'] for r in batch],
                          padding=True, truncation='longest_first', max_length=classifier.metadata['max_length'], return_tensors='pt')
-            probs = classifier.model(**tokens).logits.softmax(-1).tolist()
+            probs = classifier.model(**tokens.to(device)).logits.softmax(-1).cpu().tolist()
             for row, prob in zip(batch, probs):
                 label = labels[max(range(len(prob)), key=lambda i: prob[i])]
                 predictions.append({'id': row['id'], 'meeting_id': row['meeting_id'],
@@ -60,6 +65,7 @@ def main():
               'checkpoint_stage': classifier.metadata['checkpoint_stage'],
               'model_name': classifier.metadata['model_name'], 'model_revision': classifier.metadata['model_revision'],
               'max_length': classifier.metadata['max_length'],
+              'device_used': str(device),
               'dataset_manifest_sha256': manifest_hash, 'model_weights_sha256': sha256(args.checkpoint / 'model.safetensors'),
               'train_examples': len(train), 'selection_metric': 'validation macro F1 only',
               'scores': scores, 'predictions': predictions,

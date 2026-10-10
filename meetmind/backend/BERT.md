@@ -73,6 +73,11 @@ and transcription mismatch limits real-upload generalization.
 
 ## Train and choose candidates
 
+For the resumable full BERT-base GPU experiment and direct pilot comparison,
+use [BERT_BASE_COMPARISON.md](BERT_BASE_COMPARISON.md) and its new Colab notebook.
+This preserves the pilot dataset bytes across operating systems and keeps final
+test data out of the training runtime.
+
 ```powershell
 # Practical local pilot: 24,000 stratified training examples, all 15 classes.
 uv run --extra nlp python -u -m scripts.train_bert --config configs/bert-tiny-pilot.json

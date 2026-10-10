@@ -98,3 +98,19 @@ Rana Ahmad directed AI-assisted implementation on `feat/transcript-preprocessing
 ## 10 October 2026 - structured commitment extraction
 
 Rana Ahmad directed AI-assisted implementation on `feat/structured-commitments`. First pushed checkpoint `7143e84` added BERT-assisted local Ollama proposals, real spaCy parsing/NER, deadline token rules, exact quotation/source checks, owner resolution, and cancellation review flags. The second checkpoint adds evidence/candidate UI, additional validation cases, setup documentation and compact synthetic functional evidence. Verified 58 backend tests, frontend production build, four actual local BERT/spaCy/Ollama API cases and two real Chrome UI cases including persistence and mobile layout. These are synthetic functional checks, not held-out accuracy or F1. Existing AMI model/test split and weights were unchanged. All proposals require review; editing/approval and end-to-end labelled evaluation remain pending. Commits use the configured Rana identity; other members are not credited with this implementation.
+
+## 10 October 2026 - full BERT-base experiment tooling
+
+At the user's explicit request, new checkpoint commits on `feat/bert-base-comparison`
+use author `samxxr200-glitch <samxxr200@gmail.com>` and pushes authenticate as that
+GitHub account through device authorization. Implementation remains AI-assisted;
+the identity does not imply the account owner manually wrote the code.
+
+Checkpoint `26b2362` adds CUDA-required full-data configurations, FP16 training,
+epoch resume state, validation-only comparison and experiment tests. The next
+checkpoint provides Colab execution, byte-exact public AMI input export and GPU
+evaluation. 66 local backend tests pass, including interrupted/resumed training
+with exactly matching final weights on a small BERT fixture. Notebook code cells
+compile but have not executed in Colab. The full BERT-base candidates have not
+yet trained; no new F1 or superiority claim is made. The existing tiny pilot
+remains active. The input package excludes final-test data and private meetings.

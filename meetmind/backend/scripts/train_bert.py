@@ -3,6 +3,7 @@ import argparse
 from collections import Counter
 import json
 import math
+import os
 from pathlib import Path
 import platform
 import random
@@ -50,6 +51,7 @@ def main():
     parser.add_argument('--resume', action='store_true', help='Resume the latest completed epoch with optimizer/RNG state')
     args = parser.parse_args()
     cfg = json.loads(args.config.read_text(encoding='utf-8'))
+    os.environ.setdefault('CUBLAS_WORKSPACE_CONFIG', ':4096:8')
     validate_config(cfg)
     output = Path(cfg['output'])
     if not args.resume and output.exists() and any(output.iterdir()):
@@ -167,7 +169,7 @@ def main():
             scaler.scale(loss / group_size).backward()
             if (step + 1) % accumulation == 0 or step + 1 == len(train_loader):
                 scaler.unscale_(optimizer)
-                torch.nn.utils.clip_grad_norm_(model.parameters(), 1., error_if_nonfinite=precision == 'fp32')
+                torch.nn.utils.clip_grad_norm_(model.parameters(), 1., error_if_nonfinite=precision != 'fp16')
                 old_scale = scaler.get_scale()
                 scaler.step(optimizer); scaler.update()
                 if scaler.get_scale() >= old_scale:
