@@ -7,6 +7,18 @@ from nlp.experiments import comparison, validate_config
 from nlp.metrics import classification_metrics
 
 
+def test_small_sample_retains_rare_classes():
+    from nlp.data import training_sample
+    rows = [{'id': i, 'label': 'common' if i < 998 else 'rare'} for i in range(1000)]
+    sample = training_sample(rows, 10, 42)
+    assert len(sample) == 10
+    assert {r['label'] for r in sample} == {'common', 'rare'}
+    assert sample == training_sample(rows, 10, 42)
+    assert training_sample(rows, 0, 42) is rows
+    with pytest.raises(ValueError, match='ontology classes'):
+        training_sample(rows, 1, 42)
+
+
 def report(tmp_path, name, predicted, **changes):
     gold = ['inf', 'off']
     scores = classification_metrics(gold, predicted, gold)

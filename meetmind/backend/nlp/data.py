@@ -78,10 +78,27 @@ def load_split(directory, split):
 
 
 def training_sample(rows, limit, seed):
-    """Stratified deterministic pilot sample; full runs use limit=0."""
+    """Deterministic stratified sample with every observed class represented."""
     if not limit or limit >= len(rows):
         return rows
+    from collections import Counter
+    classes = {r['label'] for r in rows}
+    if limit < len(classes):
+        raise ValueError('Sample limit must be at least the number of ontology classes')
     from sklearn.model_selection import train_test_split
     indices, _ = train_test_split(range(len(rows)), train_size=limit,
                                   stratify=[r['label'] for r in rows], random_state=seed)
-    return [rows[i] for i in sorted(indices)]
+    selected = set(map(int, indices))
+    counts = Counter(rows[i]['label'] for i in selected)
+    # Proportional rounding can omit rare classes in a small smoke sample.
+    # Preserve existing pilot samples when they already cover the ontology.
+    for label in sorted(classes - counts.keys()):
+        incoming = next(i for i, row in enumerate(rows) if row['label'] == label)
+        donor_label = max((key for key in counts if counts[key] > 1),
+                          key=lambda key: (counts[key], key))
+        outgoing = max(i for i in selected if rows[i]['label'] == donor_label)
+        selected.remove(outgoing)
+        selected.add(incoming)
+        counts[donor_label] -= 1
+        counts[label] += 1
+    return [rows[i] for i in sorted(selected)]
