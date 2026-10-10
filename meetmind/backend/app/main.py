@@ -21,7 +21,7 @@ from pydantic import BaseModel, Field
 from .ingestion import IngestionError, parse_text, parse_transcript, docx_text, MAX_TEXT_BYTES
 from .preprocessing import prepare
 from .media import AUDIO_FORMATS, VIDEO_FORMATS, MAX_MEDIA_BYTES, MODEL_NAME, ffmpeg_path, transcribe_media
-from . import bert, commitments
+from . import bert, commitments, review
 
 DB_PATH = Path(os.getenv("MEETMIND_DB", str(Path(__file__).parents[1] / "meetmind.db")))
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434")
@@ -72,10 +72,36 @@ def save(meeting):
 
 def get_meeting(meeting_id):
     with connect() as connection:
+        connection.execute('BEGIN IMMEDIATE')
         row = connection.execute("SELECT payload FROM meetings WHERE id = ?", (meeting_id,)).fetchone()
-    if not row:
-        raise HTTPException(404, "Meeting not found")
-    return json.loads(row["payload"])
+        if not row:
+            raise HTTPException(404, "Meeting not found")
+        meeting = json.loads(row['payload'])
+        review.initialize(meeting)
+        if json.dumps(meeting) != row['payload']:
+            connection.execute('UPDATE meetings SET payload = ? WHERE id = ?', (json.dumps(meeting), meeting_id))
+    return meeting
+
+
+@app.post('/api/meetings/{meeting_id}/commitments/{item_id}/review')
+def review_commitment(meeting_id: str, item_id: str, data: review.ReviewInput):
+    with connect() as connection:
+        connection.execute('BEGIN IMMEDIATE')
+        row = connection.execute('SELECT payload FROM meetings WHERE id = ?', (meeting_id,)).fetchone()
+        if not row:
+            raise HTTPException(404, 'Meeting not found')
+        meeting = json.loads(row['payload'])
+        review.initialize(meeting)
+        try:
+            review.apply(meeting, item_id, data)
+        except LookupError as error:
+            raise HTTPException(404, str(error)) from error
+        except RuntimeError as error:
+            raise HTTPException(409, str(error)) from error
+        except ValueError as error:
+            raise HTTPException(422, str(error)) from error
+        connection.execute('UPDATE meetings SET payload = ? WHERE id = ?', (json.dumps(meeting), meeting_id))
+    return meeting
 
 
 @app.get("/api/health")
@@ -275,14 +301,22 @@ def classify_dialogue(meeting_id: str):
     except bert.BertUnavailable as error:
         raise HTTPException(503, str(error)) from error
     # Separate from commitments: suggest/offer labels are not approved tasks.
-    meeting["dialogue_analysis"] = result
-    save(meeting)
+    # Merge only analysis into the current payload, preserving concurrent reviews.
+    with connect() as connection:
+        connection.execute('BEGIN IMMEDIATE')
+        row = connection.execute('SELECT payload FROM meetings WHERE id = ?', (meeting_id,)).fetchone()
+        meeting = json.loads(row['payload'])
+        meeting['dialogue_analysis'] = result
+        connection.execute('UPDATE meetings SET payload = ? WHERE id = ?', (json.dumps(meeting), meeting_id))
     return meeting
 
 
 @app.post("/api/meetings/{meeting_id}/extract")
 async def extract(meeting_id: str):
     meeting = get_meeting(meeting_id)
+    if review.has_reviews(meeting):
+        raise HTTPException(409, 'This meeting has reviewed items. Upload a new copy to run extraction again without losing decisions.')
+    previous_revision = meeting.get('commitment_revision', 0)
     try:
         # Work on a detached payload: failures preserve previously saved results.
         analysis = await run_in_threadpool(bert.classify, meeting['segments'])
@@ -298,5 +332,13 @@ async def extract(meeting_id: str):
         raise HTTPException(502, "Model output was invalid; stored meeting was preserved. Retry extraction.") from error
     meeting.update(result, dialogue_analysis=analysis)
     meeting.update(status="extracted", model=OLLAMA_MODEL)
-    save(meeting)
+    review.initialize(meeting)
+    meeting['commitment_revision'] = previous_revision + 1
+    with connect() as connection:
+        connection.execute('BEGIN IMMEDIATE')
+        row = connection.execute('SELECT payload FROM meetings WHERE id = ?', (meeting_id,)).fetchone()
+        current = json.loads(row['payload'])
+        if current.get('commitment_revision', 0) != previous_revision or review.has_reviews(current):
+            raise HTTPException(409, 'Meeting changed during extraction. Reload to keep the latest results and reviews.')
+        connection.execute('UPDATE meetings SET payload = ? WHERE id = ?', (json.dumps(meeting), meeting_id))
     return meeting

@@ -1,0 +1,61 @@
+// Real API persistence with deterministic synthetic extraction fixtures; no model required.
+const { chromium } = require('playwright');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+(async () => {
+  const fixture = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+  const browser = await chromium.launch({ channel: 'chrome', headless: true });
+  try {
+    const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+    const errors = [];
+    page.on('pageerror', e => errors.push(e.message));
+    await page.goto(process.env.MEETMIND_UI_URL || 'http://127.0.0.1:5173');
+    await page.locator('.meeting').filter({ hasText: fixture.title }).click();
+    const first = page.locator(`[data-id="${fixture.actions[0].id}"]`);
+    const save = async (card, button) => {
+      const response = page.waitForResponse(r => r.url().endsWith('/review'));
+      await card.getByRole('button', { name: button, exact: true }).click();
+      const result = await response;
+      assert.equal(result.status(), 200, await result.text());
+      return result.json();
+    };
+    await first.getByRole('button', { name: 'Review / edit', exact: true }).click();
+    await first.getByLabel('Task', { exact: true }).fill('Send final report');
+    await first.getByLabel('Owner', { exact: true }).fill('Ali');
+    await first.getByLabel('Deadline', { exact: true }).fill('Monday');
+    await first.getByLabel('Review note', { exact: true }).fill('Corrected after checking the discussion');
+    let meeting = await save(first, 'Save changes for review');
+    assert.equal(meeting.actions[0].review_status, 'pending');
+    assert.equal(meeting.actions[0].original.owner, 'Sara');
+    assert.deepEqual(meeting.actions[0].evidence, fixture.actions[0].evidence);
+    await first.getByRole('button', { name: 'Review / edit', exact: true }).click();
+    meeting = await save(first, 'Approve commitment');
+    assert.equal(meeting.actions[0].review_status, 'approved');
+    assert.equal(meeting.actions[0].needs_review, false);
+    assert(await page.getByRole('button', { name: 'Extract commitments', exact: true }).isDisabled());
+    await first.getByRole('button', { name: 'Review / edit', exact: true }).click();
+    await first.getByLabel('Review note', { exact: true }).fill('Assignment withdrawn');
+    meeting = await save(first, 'Reject');
+    assert.equal(meeting.actions[0].review_status, 'rejected');
+    const suggestion = page.locator(`[data-id="${fixture.action_candidates[0].id}"]`);
+    await suggestion.getByRole('button', { name: 'Review / edit', exact: true }).click();
+    meeting = await save(suggestion, 'Approve as commitment');
+    assert(meeting.actions.some(item => item.id === fixture.action_candidates[0].id && item.review_status === 'approved'));
+    const cancellation = page.locator(`[data-id="${fixture.action_candidates[1].id}"]`);
+    await cancellation.getByRole('button', { name: 'Review / edit', exact: true }).click();
+    assert.equal(await cancellation.getByRole('button', { name: /Approve/ }).count(), 0);
+    await save(cancellation, 'Reject');
+    await page.reload();
+    await page.locator('.meeting').filter({ hasText: fixture.title }).click();
+    await first.getByRole('heading', { name: 'Send final report', exact: true }).waitFor();
+    assert.equal(await first.getAttribute('data-status'), 'rejected');
+    await first.getByText('Review history (3)', { exact: true }).click();
+    assert((await first.textContent()).includes('Assignment withdrawn'));
+    assert((await first.textContent()).includes('Original extraction: Send report'));
+    await page.setViewportSize({ width: 390, height: 844 });
+    await first.getByRole('button', { name: 'Review / edit', exact: true }).click();
+    assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'Mobile overflow');
+    assert.deepEqual(errors, []);
+    console.log('Review browser checks passed: edit, approve, reject, promotion, history, refresh persistence, mobile.');
+  } finally { await browser.close(); }
+})().catch(e => { console.error(e); process.exit(1); });

@@ -38,4 +38,49 @@ uv run --extra nlp python -m scripts.smoke_commitments --output runs/commitment-
 
 The smoke script uses real BERT, spaCy, Ollama and an isolated temporary database. It checks a promise with a deadline, suggestions/negation, later cancellation and an ambiguous owner. These synthetic functional checks are not an extraction accuracy benchmark. The browser script is `frontend/scripts/smoke-commitments-ui.cjs`; point `MEETMIND_UI_URL` at dedicated frontend/backend services and a separate `MEETMIND_DB`.
 
-The meeting page now shows evidence and review details, separates action candidates, and highlights possible cancellations. Existing records continue to display. Run extraction again to obtain the new fields; re-extraction replaces previous extraction results only on success. Editing, approval/rejection, accepted cross-turn assignments, date normalization, and labelled end-to-end precision/recall evaluation remain future work.
+The meeting page shows evidence and review details, separates action candidates,
+and highlights possible cancellations. Existing records receive stable item IDs
+when opened. Accepted cross-turn assignments, date normalization and labelled
+end-to-end precision/recall evaluation remain future work.
+
+## Human review
+
+Choose **Review / edit** to correct task, owner or deadline and optionally add
+a note. **Save changes for review** leaves the item pending (and reopens a
+previous approval); **Approve commitment** records approval; **Reject** records
+rejection without deleting the item. Blank owner/deadline fields remain null.
+Suggestions and requests have **Approve as commitment**, which moves the item
+into `actions` through an explicit human decision. Its original model kind stays
+unchanged as provenance. Reopening/rejecting a promoted candidate returns it to
+`action_candidates`. Cancellation candidates cannot become approved tasks.
+An action with possible cancellation evidence requires a note before approval.
+
+`POST /api/meetings/{meeting_id}/commitments/{item_id}/review` accepts
+`revision`, `task`, nullable `owner` and `deadline`, `decision` (`pending`,
+`approved`, `rejected`) and optional `note`. It returns the saved meeting.
+Unknown IDs return 404; invalid fields/decisions return 422; stale revisions
+return 409 without changing saved work. Reload after a conflict.
+
+Each item has a stable `id`, integer `revision`, `review_status`, immutable
+`original` extraction and append-only `review_history` entries with UTC time,
+before/after field values, decision and note. Source quotes, offsets, BERT
+signals and original extraction review reasons are retained. Manual corrections
+are not claimed to be source-grounded model predictions. `needs_review` is false
+for approved/rejected items; editing for review sets it true again. Relative
+deadline wording is free text; this flow does not normalize calendar dates.
+
+Reviews use an atomic SQLite transaction and item revisions to prevent lost
+updates. Classification merges analysis without overwriting current reviews.
+Re-extraction is blocked once any edit/decision history exists, including rejected
+or reopened items. An extraction in flight also fails with 409 if review or
+another extraction changed the meeting. Upload a new copy to re-extract while
+preserving reviewed work. Approval records a local decision; it does not send
+messages, create external tasks or execute work. This is still a local workspace
+without authenticated reviewer identities; history labels that limitation.
+
+`tests/test_review.py` covers persistence, provenance, promotion/reopening,
+invalid edits, stale revisions, cancellation handling and inference/review races.
+`scripts.seed_review_smoke` and `frontend/scripts/smoke-review-ui.cjs` exercise
+the real API/browser with deterministic synthetic proposals in a dedicated test
+DB, without requiring model weights in CI. The real local NLP browser smoke also
+approves an extracted action and checks persistence and unchanged evidence.

@@ -40,10 +40,23 @@ const cases = [
       }
       await page.locator('.commitment-result summary').first().click();
       assert((await page.locator('.commitment-result').first().textContent()).includes('human review required'));
+      const task = meeting.actions[0];
+      const card = page.locator(`[data-id="${task.id}"]`);
+      await card.getByRole('button', { name: 'Review / edit', exact: true }).click();
+      await card.getByLabel('Review note', { exact: true }).fill('Functional test: checked all source and cancellation evidence');
+      const reviewPromise = page.waitForResponse(r => r.url().endsWith('/review'));
+      await card.getByRole('button', { name: 'Approve commitment', exact: true }).click();
+      const reviewed = await reviewPromise;
+      assert.equal(reviewed.status(), 200, await reviewed.text());
+      const saved = (await reviewed.json()).actions.find(item => item.id === task.id);
+      assert.equal(saved.review_status, 'approved');
+      assert.equal(saved.needs_review, false);
+      assert.deepEqual(saved.evidence, task.evidence);
       await page.reload();
       await page.getByRole('heading', { name: 'Meeting library', exact: true }).waitFor();
       await page.locator('.meeting').filter({ hasText: title }).click();
       assert.equal(await page.locator('.commitment-result').count(), meeting.actions.length + meeting.action_candidates.length);
+      assert.equal(await page.locator(`[data-id="${task.id}"]`).getAttribute('data-status'), 'approved');
       await page.setViewportSize({ width: 390, height: 844 });
       assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'Mobile overflow');
       await page.setViewportSize({ width: 1440, height: 1000 });
