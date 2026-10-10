@@ -1,0 +1,46 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>hints_core tests</title>
+<!-- Open in Chrome, or run scripts/test-extension.ps1. Results are written to #results and <title>. -->
+<div id="fixture">
+  <div role="region" aria-label="Captions">
+    <div class="block"><img alt=""><div>Sara Khan</div><div><span>Send the</span> <span>report today</span></div></div>
+    <div class="block"><img alt=""><div>You</div><div>Okay thanks</div></div>
+    <div class="ui">Jump to bottom</div>
+    <div class="empty"><div>Ghost</div></div>
+  </div>
+</div>
+<pre id="results"></pre>
+<script src="../selectors.js"></script>
+<script src="../hints_core.js"></script>
+<script>
+  const H = globalThis.MeetMindHints;
+  const failures = [];
+  const eq = (name, actual, expected) => {
+    if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+      failures.push(`${name}: expected ${JSON.stringify(expected)} got ${JSON.stringify(actual)}`);
+    }
+  };
+
+  const region = H.findCaptionRegion(document);
+  eq('region found', !!region, true);
+  eq('blocks parsed', H.parseCaptionBlocks(region), [
+    { name: 'Sara Khan', text: 'Send the report today' }, { name: 'You', text: 'Okay thanks' }]);
+  eq('no region', H.findCaptionRegion(document.createElement('div')), null);
+
+  const tracker = new H.SpeakerTracker(1000);
+  const sara = (text) => ({ name: 'Sara', text });
+  eq('first text turns speaker on', tracker.update([sara('Hi')], 0), [{ t: 0, speaker: 'Sara', active: true }]);
+  eq('growing text keeps active', tracker.update([sara('Hi there')], 600), []);
+  eq('still within hold', tracker.update([sara('Hi there')], 1500), []);
+  eq('off after hold', tracker.update([sara('Hi there')], 1700), [{ t: 1600, speaker: 'Sara', active: false }]);
+  eq('new text turns on again', tracker.update([sara('Next')], 5000), [{ t: 5000, speaker: 'Sara', active: true }]);
+  eq('block removed ends turn', tracker.update([], 5300), [{ t: 5300, speaker: 'Sara', active: false }]);
+  eq('speaker handover', tracker.update([sara('A'), { name: 'Ali', text: 'B' }], 8000), [
+    { t: 8000, speaker: 'Sara', active: true }, { t: 8000, speaker: 'Ali', active: true }]);
+  eq('overlap then one stops', tracker.update([sara('A more'), { name: 'Ali', text: 'B' }], 8800), []);
+  eq('flush closes everyone', tracker.flush(9000).map((e) => e.speaker + e.active).sort(), ['Alifalse', 'Sarafalse']);
+
+  document.getElementById('results').textContent = failures.length ? 'FAIL\n' + failures.join('\n') : 'PASS';
+  document.title = failures.length ? 'FAIL' : 'PASS';
+</script>
