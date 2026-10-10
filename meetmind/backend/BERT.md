@@ -30,6 +30,16 @@ Sources and attribution:
 - [Small BERT checkpoint](https://huggingface.co/google/bert_uncased_L-2_H-128_A-2),
   for a bounded CPU pilot, not a claim that tiny BERT is the strongest model.
 
+## Selected model (completed GPU run)
+
+Full BERT-base training is complete. The default local serving checkpoint is
+`models/dialogue-bert-base-v1`, selected by validation macro F1 0.5292777.
+See [the completed comparison](reports/bert-base-comparison-v1/README.md) and
+[installation instructions](BERT_BASE_COMPARISON.md). Set `BERT_MODEL_PATH`
+explicitly to use another saved checkpoint. The old pilot remains available
+locally; weights are transferred separately from Git. Restart the backend
+after changing the checkpoint.
+
 ## Environment (PowerShell, from this backend directory)
 
 An existing server locked the reference environment's tokenizers DLL during

@@ -1,6 +1,23 @@
 # Full BERT-base GPU training and comparison
 
-This workflow implements the requested larger-model experiment. The local laptop
+Full GPU training was completed on 10 October 2026 and the returned checkpoints
+were imported locally. The 3e-5 candidate (best epoch 3) won by validation macro
+F1: **0.5292777**, accuracy **0.6313544**, versus 2e-5's **0.5235926** and the
+tiny pilot's **0.4219068**. This is a gain of **0.1073709** macro F1. Final-test
+evaluation remains reserved. Compact evidence is in
+`reports/bert-base-comparison-v1/`.
+
+The app defaults to `models/dialogue-bert-base-v1`. The selected weights SHA256
+is `5a70014dec35d58aa1c4661fc2d93cda5986d20e49b0eb317968f8bf78f472eb`.
+Weights and the results ZIP stay outside Git. For another team member, obtain
+the results ZIP from the team, extract it into a fresh local folder, and copy
+`bert-base-gpu-lr3e5/best/` to `models/dialogue-bert-base-v1/`. Compare the weight
+hash above before serving. Restart the backend to load the new default. To
+explicitly use the preserved pilot in PowerShell, set
+`$env:BERT_MODEL_PATH = (Resolve-Path models/dialogue-bert).Path` before starting
+the backend. Remove that override to use the new default.
+
+The following sections document the reproducible training workflow. The local laptop
 has Intel Iris Xe graphics and CPU PyTorch; it has no CUDA GPU. Full BERT-base
 training must execute in the user's Colab/Kaggle GPU runtime. A prepared notebook
 or a passing unit test is not a completed full-model experiment.

@@ -6,7 +6,7 @@ import threading
 
 from nlp.data import ACTION_LABELS, build_inputs, sha256
 
-DEFAULT_MODEL = Path(__file__).parents[1] / 'models' / 'dialogue-bert'
+DEFAULT_MODEL = Path(__file__).parents[1] / 'models' / 'dialogue-bert-base-v1'
 _lock = threading.Lock()
 _cached = None
 

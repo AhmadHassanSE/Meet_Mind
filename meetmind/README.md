@@ -11,6 +11,7 @@ Backend:
 cd meetmind/backend
 $env:UV_PROJECT_ENVIRONMENT='.venv-nlp'
 uv sync --extra nlp --group dev
+# Supply the selected checkpoint as described in backend/BERT_BASE_COMPARISON.md.
 uv run --extra nlp uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
@@ -33,8 +34,11 @@ The primary dialogue-act classifier now has official AMI dataset preparation,
 fine-tuning, validation-only checkpoint selection, baseline evaluation and a
 local classifier endpoint/UI. See [backend/BERT.md](backend/BERT.md) for exact
 setup and recorded experiment boundaries. Use the `nlp` extra and `.venv-nlp`
-environment for BERT. CPU pilot training is distinct from the full BERT-base
-candidate; a configuration alone is not a trained model. Dialogue-act labels
+environment for BERT. Full BERT-base GPU training is complete: the selected
+3e-5 candidate achieved validation macro F1 0.5293 versus the tiny pilot's
+0.4219. The default checkpoint folder is `backend/models/dialogue-bert-base-v1`;
+weights are distributed separately from Git. `BERT_MODEL_PATH` overrides it.
+Restart the backend after installing the selected checkpoint. Dialogue-act labels
 are kept separate from confirmed action commitments and Ollama extraction.
 
 The four upload tabs support:

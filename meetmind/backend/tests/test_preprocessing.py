@@ -1,3 +1,4 @@
+import json
 import re
 from fastapi.testclient import TestClient
 from app import main, preprocessing as p
@@ -47,8 +48,10 @@ def test_long_unicode_text_and_context_budget():
     assert_coverage(prepared)
     tokenizer, budget = p.token_policy()
     if tokenizer:
+        from app.bert import model_path
+        metadata = json.loads((model_path() / 'meetmind_model.json').read_text(encoding='utf-8'))
         for target, context in build_inputs(prepared['segments'], 2):
-            assert len(tokenizer.encode(target, context).ids) <= 96
+            assert len(tokenizer.encode(target, context).ids) <= metadata['max_length']
 
 
 def test_fallback_and_ordinary_headings(monkeypatch):

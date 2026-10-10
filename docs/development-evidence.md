@@ -114,3 +114,24 @@ with exactly matching final weights on a small BERT fixture. Notebook code cells
 compile but have not executed in Colab. The full BERT-base candidates have not
 yet trained; no new F1 or superiority claim is made. The existing tiny pilot
 remains active. The input package excludes final-test data and private meetings.
+# Full BERT-base results imported: 10 October 2026
+
+The user completed the Colab notebook on Tesla T4 and returned both fine-tuned
+checkpoints. The 3e-5 candidate at epoch 3 won by validation macro F1 0.5292777,
+versus 0.5235926 for 2e-5 and 0.4219068 for the earlier tiny pilot. Both full
+candidates used 82,294 train rows and all 13,593 validation rows. No final-test
+evaluation was performed. Hashes, architecture, per-class metric aggregation,
+dataset identity and best-epoch history were checked on import.
+
+The selected checkpoint is now the local default `models/dialogue-bert-base-v1`;
+the pilot is preserved and `BERT_MODEL_PATH` supports explicit rollback. All 67
+backend tests, real checkpoint API persistence checks, two real AMI-excerpt
+Chrome checks and four synthetic local commitment checks passed. A local full
+validation rerun did not complete while Windows reported paging-memory
+exhaustion during concurrent checks. Full scores are the imported Colab
+results, not a claimed independent local reproduction. See
+`meetmind/backend/reports/bert-base-comparison-v1/` for compact evidence.
+
+Implementation and validation were AI-assisted at the user's direction.
+Commits use the explicitly authorized team account; this does not assert
+that the named account holder manually authored the implementation.
