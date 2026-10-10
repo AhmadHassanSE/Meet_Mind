@@ -105,7 +105,7 @@ def token_policy():
 def sentence_ranges(text):
     start = 0
     for match in re.finditer(r'[.!?]+["\')\]]*(?=\s|$)', text):
-        prefix = text[:match.start()]
+        prefix = text[max(0, match.start() - 100):match.start()]
         word = re.search(r'([\w.]+)$', prefix)
         if match[0].startswith('.') and word:
             token = word[1].lower()
@@ -135,15 +135,20 @@ def prepare(original, parents=None):
                     a += 1
                 if a == b:
                     break
-                remaining = text[a:b]
+                remaining = text[a:min(b, a + 4096)]
                 if tokenizer:
                     encoding = tokenizer.encode(remaining, add_special_tokens=False)
                     cut = encoding.offsets[budget - 1][1] if len(encoding.ids) > budget else len(remaining)
                 else:
                     words = list(re.finditer(r'\S+', remaining))
                     cut = min(240, words[budget - 1].end() if len(words) > budget else len(remaining))
+                if tokenizer:
+                    # NFKC cleaning can expand compatibility characters. Budget
+                    # the actual model text while keeping offsets in the original.
+                    while cut > 1 and len(tokenizer.encode(clean(remaining[:cut]), add_special_tokens=False).ids) > budget:
+                        cut = max(1, cut // 2)
                 forced = False
-                if cut < len(remaining):
+                if cut < b - a:
                     # Prefer a complete word, preserving conjunctions/negation verbatim.
                     boundary = max(remaining.rfind(' ', 0, cut + 1), remaining.rfind('\t', 0, cut + 1))
                     if boundary > 0:
@@ -162,6 +167,8 @@ def prepare(original, parents=None):
                 a = end
     if not segments:
         raise IngestionError('No transcript utterances found')
+    if any(s['preprocessing_review'] for s in segments):
+        warnings.append('Some long unbroken strings were split inside a word; review their source turns.')
     return {'segments': segments, 'source_segments': parents, 'original_transcript': original,
             'transcript': '\n'.join(s['text'] for s in segments),
             'preprocessing': {'version': VERSION, 'source_count': len(parents), 'utterance_count': len(segments),

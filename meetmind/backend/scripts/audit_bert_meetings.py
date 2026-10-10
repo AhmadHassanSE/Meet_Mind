@@ -56,6 +56,12 @@ def audit(output, workspace_files):
                     assert uploaded.status_code == 201, uploaded.text
                     meeting = uploaded.json()
                     original_segments = meeting['segments']
+                    if 'source_segments' in meeting:
+                        for parent in meeting['source_segments']:
+                            children = [s for s in original_segments if s['parent_source_id'] == parent['id']]
+                            assert ''.join(''.join(s['source'].split()) for s in children) == ''.join(parent['text'].split())
+                            assert all(parent['text'][s['source_start']:s['source_end']] == s['source'] for s in children)
+                        assert meeting['original_transcript'] == fixture.read_bytes().decode('utf-8-sig')
                     before = time.monotonic()
                     response = client.post(f'/api/meetings/{meeting["id"]}/classify')
                     duration = time.monotonic() - before
@@ -87,8 +93,12 @@ def audit(output, workspace_files):
                               'reported_target_truncated': sum(p.get('target_text_truncated', False) for p in predictions),
                               'long_source_ids': long_ids, 'max_target_tokens': max(target_lengths),
                               'source_sha256': sha256(fixture),
+                              'preprocessing': meeting.get('preprocessing'),
                               'functional_checks': 'pass: upload, analysis, source IDs/text, persistence, export, review guards'}
-                    if case['gold_rows'] is not None:
+                    boundaries_match = case['gold_rows'] is not None and [r['text'] for r in case['gold_rows']] == [s['text'] for s in original_segments]
+                    if case['gold_rows'] is not None and not boundaries_match:
+                        result['metrics_omitted'] = 'Prepared boundaries differ from gold dialogue acts; relabeling required.'
+                    if boundaries_match:
                         gold_rows = case['gold_rows']
                         assert len(gold_rows) == len(predictions)
                         gold = [r['label'] for r in gold_rows]
@@ -110,7 +120,7 @@ def audit(output, workspace_files):
     report = {'checkpoint_sha256': sha256(model_path() / 'model.safetensors'),
               'selection': 'first chronological meeting ID per validation session; no outcome selection',
               'test_set_used': False, 'dataset_manifest_sha256': sha256('data/ami-da-v1/manifest.json'),
-              'cases': results, 'annotated_ami_metrics': classification_metrics(all_gold, all_predicted, sorted(manifest['labels'])),
+              'cases': results, 'annotated_ami_metrics': classification_metrics(all_gold, all_predicted, sorted(manifest['labels'])) if all_gold else None,
               'elapsed_seconds': time.monotonic() - started,
               'limitations': ['Validation cases are a subset of the already evaluated validation split, not new independent test evidence.',
                              'Workspace report provenance is unverified and no accuracy is claimed for those files.',

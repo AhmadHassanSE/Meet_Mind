@@ -90,3 +90,7 @@ passed. Compact evidence is in
 `meetmind/backend/reports/real-meeting-audit-2026-10-10`; full local fixtures are
 ignored. Private transcript text was not pushed. Work remains Codex-assisted at
 Rana's direction under Rana's configured Git identity.
+
+## 10 October 2026 ? transcript preparation
+
+Rana Ahmad directed AI-assisted implementation on `feat/transcript-preprocessing`. Added conservative report cleanup, sentence/token segmentation, speaker/time parsing, exact source lineage, original-text downloads and UI source inspection. First checkpoint: `811aa8a`. Verified 38 backend tests, production build and seven complete API/browser cases. No final test data or new accuracy claim; segmentation changes invalidate direct comparison against old act boundaries. See `meetmind/backend/PREPROCESSING.md` and tracked compact audit evidence. Other members? work is not attributed by these commits.

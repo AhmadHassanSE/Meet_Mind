@@ -17,7 +17,8 @@ import httpx
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
-from .ingestion import IngestionError, parse_text, parse_transcript, MAX_TEXT_BYTES
+from .ingestion import IngestionError, parse_text, parse_transcript, docx_text, MAX_TEXT_BYTES
+from .preprocessing import prepare
 from .media import AUDIO_FORMATS, VIDEO_FORMATS, MAX_MEDIA_BYTES, MODEL_NAME, ffmpeg_path, transcribe_media
 from . import bert
 
@@ -112,14 +113,15 @@ def create_meeting(data: MeetingInput):
     if not data.title.strip() or not data.transcript.strip():
         raise HTTPException(422, "Title and transcript cannot be blank")
     try:
-        segments = segments_from_text(data.transcript)
+        prepared = prepare(data.transcript, segments_from_text(data.transcript) if data.transcript.lstrip().startswith('WEBVTT') else None)
+        segments = prepared['segments']
     except IngestionError as error:
         raise HTTPException(422, str(error)) from error
     if not segments:
         raise HTTPException(422, "No transcript utterances found")
     meeting = {"id": str(uuid4()), "title": data.title.strip(), "transcript": data.transcript,
                "segments": segments, "actions": [], "status": "uploaded", "model": None,
-               "source_type": "text", "filename": None}
+               "source_type": "text", "filename": None, **prepared}
     save(meeting)
     return meeting
 
@@ -132,10 +134,12 @@ async def upload_transcript(title: str = Form(..., min_length=1, max_length=200)
         suffix = Path(file.filename or "").suffix.lower()
         data = await file.read(MAX_TEXT_BYTES + 1)
         segments = parse_transcript(data, suffix)
+        original = docx_text(data) if suffix == '.docx' else data.decode('utf-8-sig')
+        prepared = prepare(original, segments if suffix in {'.vtt', '.srt'} else None)
         meeting = {"id": str(uuid4()), "title": title.strip(),
                    "transcript": "\n".join(item["source"] for item in segments),
                    "segments": segments, "actions": [], "status": "uploaded", "model": None,
-                   "source_type": suffix.lstrip("."), "filename": Path(file.filename or "").name}
+                   "source_type": suffix.lstrip("."), "filename": Path(file.filename or "").name, **prepared}
         save(meeting)
         return meeting
     except IngestionError as error:
@@ -153,11 +157,12 @@ def update_job(job_id, status, progress, message, meeting_id=None):
 def run_media_job(job_id, title, filename, path):
     try:
         segments, metadata = transcribe_media(path, lambda status, progress, message: update_job(job_id, status, progress, message))
+        prepared = prepare('\n'.join(s['source'] for s in segments), segments)
         update_job(job_id, "saving", 96, "Saving transcript and evidence segments")
         meeting = {"id": str(uuid4()), "title": title, "transcript": "\n".join(s["source"] for s in segments),
                    "segments": segments, "actions": [], "status": "uploaded", "model": None,
                    "source_type": "video" if path.suffix in VIDEO_FORMATS else "audio",
-                   "filename": filename, **metadata}
+                   "filename": filename, **metadata, **prepared}
         save(meeting)
         update_job(job_id, "completed", 100, "Transcript ready", meeting["id"])
     except IngestionError as error:
@@ -236,19 +241,23 @@ def caption_time(seconds):
 def download_transcript(meeting_id: str, format: str = "txt"):
     meeting = get_meeting(meeting_id)
     if format == "json":
-        body, content_type = json.dumps({"title": meeting["title"], "segments": meeting["segments"]}, ensure_ascii=False), "application/json"
+        body, content_type = json.dumps({key: meeting[key] for key in ('title', 'segments', 'source_segments', 'original_transcript', 'preprocessing') if key in meeting}, ensure_ascii=False), "application/json"
+    elif format == 'original':
+        body, content_type = meeting.get('original_transcript', meeting['transcript']), 'text/plain'
     elif format == "txt":
-        body, content_type = "\n".join(s["source"] for s in meeting["segments"]), "text/plain"
+        body, content_type = "\n".join((f"{s['speaker']}: " if s.get('speaker') else '') + s['text'] for s in meeting["segments"]), "text/plain"
     elif format == "vtt":
         if not all(s.get("start") is not None and s.get("end") is not None for s in meeting["segments"]):
             raise HTTPException(422, "VTT export requires timestamps for every segment")
+        if any(s['end'] <= s['start'] for s in meeting['segments']):
+            raise HTTPException(422, 'VTT requires positive time ranges. Use JSON to preserve point timestamps.')
         cues = []
         for s in meeting["segments"]:
             speaker = f"<v {html.escape(s['speaker'])}>" if s.get("speaker") else ""
             cues.append(f"{s['id']}\n{caption_time(s['start'])} --> {caption_time(s['end'])}\n{speaker}{html.escape(s['text'])}")
         body, content_type = "WEBVTT\n\n" + "\n\n".join(cues) + "\n", "text/vtt"
     else:
-        raise HTTPException(422, "Choose txt, json or vtt")
+        raise HTTPException(422, "Choose txt, json, original or vtt")
     return Response(body, media_type=content_type, headers={"Content-Disposition": f'attachment; filename="transcript.{format}"'})
 
 

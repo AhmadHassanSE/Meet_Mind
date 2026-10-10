@@ -59,7 +59,8 @@ def test_transcript_downloads_and_timestamp_roundtrip(tmp_path, monkeypatch):
     assert client.get(base + '?format=json').json()['segments'] == meeting['segments']
     exported = client.get(base + '?format=vtt')
     assert exported.status_code == 200
-    assert parse_transcript(exported.content, '.vtt') == meeting['segments']
+    assert parse_transcript(exported.content, '.vtt') == [
+        {key: s[key] for key in ('id', 'speaker', 'text', 'source', 'start', 'end')} for s in meeting['segments']]
     assert 'attachment' in exported.headers['content-disposition']
     assert client.get(base + '?format=exe').status_code == 422
     plain = client.post('/api/meetings', json={'title': 'Text', 'transcript': 'Hello'}).json()

@@ -25,6 +25,14 @@ const assert = require('node:assert/strict');
       const response = await responsePromise;
       assert.equal(response.status(), 200, await response.text());
       const meeting = await response.json();
+      assert(meeting.preprocessing, 'Missing transcript preparation metadata');
+      await page.getByText('Original transcript', { exact: true }).click();
+      assert.equal(await page.locator('.preparation pre').textContent(), meeting.original_transcript);
+      await page.getByText('Original transcript', { exact: true }).click();
+      await page.locator('.columns section').first().locator('summary').first().click();
+      const parentId = meeting.segments[0].parent_source_id;
+      assert.equal(await page.locator('.columns section').first().locator('details p').first().textContent(),
+        meeting.source_segments.find(source => source.id === parentId).text);
       await page.locator('.dialogue-results article').first().waitFor();
       assert.equal(await page.locator('.dialogue-results article').count(), fixture.segments);
       assert.equal(meeting.dialogue_analysis.predictions.length, fixture.segments);
