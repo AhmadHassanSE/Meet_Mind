@@ -21,8 +21,8 @@ jobs:
       run:
         working-directory: meetmind/backend
     env:
-      MEETMIND_DB: ${{ runner.temp }}/backend-tests.db
-      BERT_MODEL_PATH: ${{ runner.temp }}/no-private-checkpoint
+      MEETMIND_DB: ${{ github.workspace }}/backend-tests.db
+      BERT_MODEL_PATH: ${{ github.workspace }}/no-private-checkpoint
       HF_HUB_OFFLINE: '1'
       TRANSFORMERS_OFFLINE: '1'
     steps:
@@ -56,7 +56,7 @@ jobs:
       run:
         working-directory: meetmind/frontend
     env:
-      MEETMIND_DB: ${{ runner.temp }}/browser-tests.db
+      MEETMIND_DB: ${{ github.workspace }}/browser-tests.db
       MEETMIND_BACKEND_URL: http://127.0.0.1:8016
       MEETMIND_UI_URL: http://127.0.0.1:5186
       HF_HUB_OFFLINE: '1'
