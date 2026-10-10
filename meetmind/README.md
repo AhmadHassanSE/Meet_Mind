@@ -25,6 +25,14 @@ Open the localhost URL printed by Vite. Development requests proxy to the local 
 
 Configuration: backend environment variables `OLLAMA_URL`, `OLLAMA_MODEL`, `MEETMIND_DB`, `WHISPER_MODEL`, `FFMPEG_PATH`. Defaults: localhost:11434, llama3.2:latest, backend/meetmind.db, base.en, ffmpeg. Frontend `MEETMIND_BACKEND_URL` overrides the development proxy target (default localhost:8000). No hosted AI provider or API key is used. Dependency/model downloads require internet; meeting transcription and extraction run locally. First media ingestion downloads Whisper weights if not cached, so prepare the model before an offline demo. A local model directory can be supplied as `WHISPER_MODEL`.
 
+## Google Meet capture (Chrome extension)
+
+The `extension/` folder is a Chrome (116+) extension that records a Google Meet tab and sends it to the local backend. No Google account integration or API key is needed, so it works with free Gmail. The tab audio and your microphone are mixed and uploaded in chunks to `POST /api/meet/sessions/...`; when you stop, the backend transcribes locally with Whisper, labels speakers from hints read off Meet's live captions, and saves a `google_meet` meeting you can classify and extract like any other. See `extension/README.md` for setup and limits.
+
+Extra configuration: `MEETMIND_MEET_LAG_MS` (default 500, how long Meet captions lag behind speech) and `MEETMIND_MEET_MIN_CONFIDENCE` (default 0.4, minimum overlap margin before a speaker name is attached; below it the utterance stays "Unknown speaker").
+
+Recording other people needs their knowledge. The extension shows a red banner on the Meet page and a REC badge while it records; tell participants before you start.
+
 ## Current scope
 
 ### Fine-tuned BERT (10 October update)
