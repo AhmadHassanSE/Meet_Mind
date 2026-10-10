@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 import threading
 
-from nlp.data import ACTION_LABELS, build_inputs
+from nlp.data import ACTION_LABELS, build_inputs, sha256
 
 DEFAULT_MODEL = Path(__file__).parents[1] / 'models' / 'dialogue-bert'
 _lock = threading.Lock()
@@ -54,6 +54,7 @@ class DialogueClassifier:
                     info['missing_keys'] or info['unexpected_keys'] or info.get('mismatched_keys')):
                 raise ValueError('Checkpoint weights/labels do not match the saved task')
             self.labels = labels
+            self.metadata['model_weights_sha256'] = sha256(self.path / 'model.safetensors')
             torch.set_num_threads(int(os.getenv('BERT_CPU_THREADS', '4')))
             self.model.eval()
         except (OSError, ValueError, KeyError, TypeError) as error:
@@ -101,5 +102,5 @@ def classify(segments):
         predictions = classifier.predict(segments)
         metadata = {k: classifier.metadata[k] for k in [
             'model_name', 'model_revision', 'checkpoint_stage', 'best_epoch',
-            'validation_macro_f1', 'dataset_manifest_sha256', 'confidence_calibrated']}
+            'validation_macro_f1', 'dataset_manifest_sha256', 'model_weights_sha256', 'confidence_calibrated']}
         return {'task': 'ami_dialogue_act', 'predictions': predictions, 'model': metadata}

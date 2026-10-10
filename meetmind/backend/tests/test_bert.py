@@ -78,3 +78,40 @@ def test_incompatible_metadata_rejected_before_loading(tmp_path):
     (tmp_path / 'meetmind_model.json').write_text(json.dumps({'task': 'wrong', 'schema_version': 1}))
     with pytest.raises(bert.BertUnavailable, match='invalid'):
         bert.DialogueClassifier(tmp_path)
+
+
+def test_action_labels_always_require_review_even_at_high_score():
+    torch = pytest.importorskip('torch')
+    from types import SimpleNamespace
+    classifier = bert.DialogueClassifier.__new__(bert.DialogueClassifier)
+    classifier.torch = torch
+    classifier.labels = ['inf', 'off', 'sug']
+    classifier.metadata = {'context_turns': 2, 'max_length': 96, 'review_threshold': .7,
+                           'review_margin': .15, 'label_descriptions': {'inf': 'Inform', 'off': 'Offer', 'sug': 'Suggest'}}
+    classifier.tokenizer = lambda *args, **kwargs: {}
+    classifier.model = lambda **kwargs: SimpleNamespace(logits=torch.tensor([[0., 9., 0.], [1., 1., 1.]]))
+    results = classifier.predict([{'id': 2, 'text': 'I will do it', 'speaker': 'Sara'},
+                                  {'id': 8, 'text': 'Maybe', 'speaker': None}])
+    assert results[0]['source_id'] == 2
+    assert results[0]['score'] > .99
+    assert results[0]['review_reasons'] == ['possible_action_is_not_a_confirmed_commitment']
+    assert results[0]['needs_review']
+    assert results[1]['source_id'] == 8
+    assert 'low_model_score' in results[1]['review_reasons']
+    assert 'close_alternative_label' in results[1]['review_reasons']
+
+
+def test_selection_uses_validation_and_preserves_existing_model(tmp_path):
+    from scripts.select_bert import select
+    for name, score in [('first', .3), ('second', .5)]:
+        checkpoint = tmp_path / name / 'best'
+        checkpoint.mkdir(parents=True)
+        (checkpoint / 'model.safetensors').write_bytes(b'test-fixture')
+        (checkpoint / 'meetmind_model.json').write_text(json.dumps({
+            'test_used_for_selection': False, 'validation_macro_f1': score,
+            'dataset_manifest_sha256': 'same', 'checkpoint_stage': 'test'}))
+    output = tmp_path / 'served'
+    select([tmp_path / 'first', tmp_path / 'second'], output)
+    assert json.loads((output / 'selection.json').read_text())['selected_run'].endswith('second')
+    with pytest.raises(ValueError, match='already exists'):
+        select([tmp_path / 'first'], output)

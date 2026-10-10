@@ -5,7 +5,8 @@ import './styles.css';
 import { UploadMeeting } from './UploadMeeting';
 
 type Action = { task: string; owner: string | null; deadline: string | null; source_id: number; needs_review: boolean };
-type Meeting = { id: string; title: string; status: string; model: string | null; source_type?: string; segments: { id: number; speaker: string | null; text: string; source: string; start?: number | null; end?: number | null }[]; actions: Action[] };
+type DialoguePrediction = { source_id: number; label: string; description: string; score: number; possible_action: boolean; needs_review: boolean; review_reasons: string[]; top_labels: { label: string; score: number }[] };
+type Meeting = { id: string; title: string; status: string; model: string | null; source_type?: string; segments: { id: number; speaker: string | null; text: string; source: string; start?: number | null; end?: number | null }[]; actions: Action[]; dialogue_analysis?: { predictions: DialoguePrediction[]; model: { model_name: string; checkpoint_stage: string } } };
 async function request<T>(path: string, body?: object): Promise<T> {
   const response = await fetch(`/api${path}`, body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : undefined);
   const data = await response.json();
@@ -16,7 +17,7 @@ function App() {
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [selected, setSelected] = useState<Meeting | null>(null);
   const [view, setView] = useState<'meetings' | 'upload'>(() => localStorage.getItem('meetmind-ingestion-job') ? 'upload' : 'meetings');
-  const [health, setHealth] = useState({ ollama: 'checking', model: 'llama3.2:latest' });
+  const [health, setHealth] = useState({ ollama: 'checking', model: 'llama3.2:latest', bert: { status: 'checking', stage: '' } });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const refresh = () => request<Meeting[]>('/meetings').then(setMeetings);
@@ -32,12 +33,19 @@ function App() {
     try { setSelected(await request<Meeting>(`/meetings/${selected.id}/extract`, {})); await refresh(); }
     catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   }
+  async function classify() {
+    if (!selected) return;
+    setBusy(true); setError('');
+    try { setSelected(await request<Meeting>(`/meetings/${selected.id}/classify`, {})); await refresh(); }
+    catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+  }
   return <div className="shell"><aside><div className="brand"><Zap/><strong>MeetMind</strong></div><p className="eyebrow">LOCAL WORKSPACE</p><nav><button className={view === 'meetings' ? 'active' : ''} onClick={() => { setView('meetings'); setSelected(null); }}><FileText size={19}/> Meetings</button><button className={view === 'upload' ? 'active' : ''} onClick={() => setView('upload')}><Upload size={19}/> Upload transcript</button></nav><div className="local"><Cpu size={19}/><div>Ollama · {health.ollama}<small>{health.model}</small></div></div></aside><main><header><span>Iteration 01 <span className="muted">/ R&D and NLP pipeline</span></span><span className="pill">Local inference</span></header><div className="content">{error && <div role="alert" className="error">{error}</div>}
     {view === 'upload' ? <UploadMeeting onReady={openMeeting}/>
     : selected ? <>
       <button className="back" onClick={() => setSelected(null)}>← All meetings</button>
       <p className="eyebrow">MEETING WORKSPACE</p><h1>{selected.title}</h1>
       <div className="row"><p className="muted">{selected.segments.length} utterances · {selected.source_type || 'text'} · {selected.status}</p><button className="primary" disabled={busy} onClick={extract}>{busy ? 'Extracting locally…' : 'Extract with Ollama'}<Cpu size={17}/></button></div>
+      <section className="panel bert-summary"><div className="row"><div><h2>BERT dialogue analysis</h2><p className="muted">{health.bert.status}{health.bert.stage ? ` · ${health.bert.stage}` : ''}</p></div><button className="primary" disabled={busy} onClick={classify}>{busy ? 'Processing locally…' : 'Analyze with BERT'}<Cpu size={17}/></button></div><p className="muted">Classifies dialogue acts and highlights possible actions. Offers and suggestions require review before becoming tasks. Scores are uncalibrated model outputs.</p>{selected.dialogue_analysis && <><small className="muted">{selected.dialogue_analysis.model.model_name} · {selected.dialogue_analysis.model.checkpoint_stage}</small><div className="dialogue-results">{selected.dialogue_analysis.predictions.map(prediction => <article key={prediction.source_id}><span className={`pill${prediction.possible_action ? ' warning' : ''}`}>#{prediction.source_id} · {prediction.description}</span> <small className="muted">Model score {prediction.score.toFixed(3)}</small><p>{selected.segments.find(s => s.id === prediction.source_id)?.text}</p>{prediction.needs_review && <small className="mint">Review: {prediction.review_reasons.map(reason => reason.replaceAll('_', ' ')).join('; ')}</small>}<small className="muted dialogue-alternatives">Alternatives: {prediction.top_labels.map(label => `${label.label} ${label.score.toFixed(3)}`).join(' · ')}</small></article>)}</div></>}</section>
       <div className="row downloads"><span className="muted">Download transcript</span><div><a href={`/api/meetings/${selected.id}/transcript?format=txt`}>TXT</a> <a href={`/api/meetings/${selected.id}/transcript?format=json`}>JSON</a>{selected.segments.some(s => s.start != null) && <> <a href={`/api/meetings/${selected.id}/transcript?format=vtt`}>VTT</a></>}</div></div>
       <div className="columns"><section className="panel"><h2>Transcript evidence</h2>{selected.segments.map(s => <article key={s.id}><small className="mint">#{s.id} · {s.speaker || 'Unknown speaker'}{s.start != null ? ` · ${s.start.toFixed(1)}s – ${s.end?.toFixed(1)}s` : ''}</small><p>{s.text}</p></article>)}</section>
       <section className="panel"><h2>Extracted commitments</h2><p className="muted">Model suggestions require human review. No confidence probability is claimed.</p>{selected.status === 'uploaded' ? <div className="empty">Run extraction to identify commitments.</div> : !selected.actions.length ? <div className="empty"><CheckCircle2/> No commitments detected. Review the transcript to verify.</div> : selected.actions.map((a, i) => <article key={i}><span className="pill warning">Needs review</span><h3>{a.task}</h3><p className="muted">Owner: {a.owner || 'Unresolved'} · Due: {a.deadline || 'Unresolved'}</p><blockquote>{selected.segments.find(s => s.id === a.source_id)?.source}</blockquote></article>)}{selected.model && <small className="muted">Generated with {selected.model}</small>}</section></div>

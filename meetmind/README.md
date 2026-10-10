@@ -26,6 +26,16 @@ Configuration: backend environment variables `OLLAMA_URL`, `OLLAMA_MODEL`, `MEET
 
 ## Current scope
 
+### Fine-tuned BERT (10 October update)
+
+The primary dialogue-act classifier now has official AMI dataset preparation,
+fine-tuning, validation-only checkpoint selection, baseline evaluation and a
+local classifier endpoint/UI. See [backend/BERT.md](backend/BERT.md) for exact
+setup and recorded experiment boundaries. Use the `nlp` extra and `.venv-nlp`
+environment for BERT. CPU pilot training is distinct from the full BERT-base
+candidate; a configuration alone is not a trained model. Dialogue-act labels
+are kept separate from confirmed action commitments and Ollama extraction.
+
 The four upload tabs support:
 
 | Input | Formats | Processing |
@@ -41,9 +51,9 @@ Jobs are queued (one worker, three total admitted jobs), decoded, transcribed an
 
 All paths produce the same transcript segment fields: `id`, `speaker`, `text`, `source`, `start`, `end`. Meeting metadata includes source type, original filename and transcription model/duration where applicable. TXT/JSON exports are available for every meeting; VTT export requires timestamps on all segments.
 
-SQLite persistence, meeting library/detail, health status and source-linked Ollama extraction remain available. Long transcripts are batched for extraction, preserving segment IDs; a single oversized utterance is rejected explicitly. Batching can miss context spanning batch boundaries. Extraction suggestions require review; source references are validated but semantic correctness is not guaranteed. Re-extraction replaces previous results. Owner/deadline editing, spaCy, baseline evaluation, confidence module and AMI dataset work are pending. No external actions execute.
+SQLite persistence, meeting library/detail, health status and source-linked Ollama extraction remain available. Long transcripts are batched for extraction, preserving segment IDs; a single oversized utterance is rejected explicitly. Batching can miss context spanning batch boundaries. Extraction suggestions require review; source references are validated but semantic correctness is not guaranteed. Re-extraction replaces previous results. Owner/deadline editing, spaCy, calibrated confidence and commitment-specific annotation/evaluation remain pending. Separate AMI dialogue-act training and evaluation are documented in BERT.md. No external actions execute.
 
-Ollama is the local LLM backend, not evidence of BERT fine-tuning. The proposal's BERT milestone remains distinct unless the supervisor accepts a documented method change. SQLite is a temporary local foundation; PostgreSQL remains the proposed relational target. No authentication or production deployment is included.
+Fine-tuned BERT is the primary dialogue-act classifier following the user's confirmed decision. Ollama remains the optional local commitment extractor and does not replace BERT. SQLite is a temporary local foundation; PostgreSQL remains the proposed relational target. No authentication or production deployment is included.
 
 ## Checks
 ```powershell

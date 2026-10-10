@@ -98,6 +98,12 @@ meeting data. The checked-in uv CPU source does not install CUDA PyTorch.
 Compare learning rates 2e-5, 3e-5 and 5e-5 with independent output directories;
 use additional seeds to assess stability. Keep architecture, data budget and
 configuration in each run record. Only validation may guide these decisions.
+
+An unexecuted [GPU notebook](notebooks/bert_gpu_training.ipynb) prepares the same
+public dataset, trains two BERT-base learning-rate candidates, selects on
+validation only, evaluates the frozen winner and exports model/evidence. It is
+provided for manual execution; no remote training or private-data upload has
+been performed by this implementation.
 The provided defaults are starting configurations, not a guarantee of optimal
 hyperparameters. Pilot and full-data runs must be labeled separately.
 
@@ -153,7 +159,15 @@ Every possible-action prediction requires human review regardless of score.
 
 ```powershell
 uv run --extra nlp pytest -q
+uv run --extra nlp python -m scripts.smoke_bert
 ```
+
+Observed pilot results and error analysis are in
+[reports/bert-tiny-pilot-v1/README.md](reports/bert-tiny-pilot-v1/README.md).
+Real browser inference can be checked with the frontend smoke script by setting
+`MEETMIND_BERT_SMOKE=1`, against a dedicated test database and running servers.
+The first request can take time to load Windows dependencies/weights; rehearse
+and warm the model before evaluation. The UI waits for the actual result.
 
 Raw data, model weights and run directories are ignored by Git. Commit compact
 manifest/result summaries and reproducible code, not private recordings or huge

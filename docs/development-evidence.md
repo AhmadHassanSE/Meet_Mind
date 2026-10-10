@@ -30,3 +30,41 @@ Branch: `feat/unified-ingestion`. Work performed with Codex assistance at Rana's
 - The browser-ingested WAV transcript was passed to local Ollama, which returned both fixture commitments with valid source IDs (report by Friday; room booking next Monday). This also preserved Whisper's Sara/Sarah transcription difference, reinforcing the need for review and later quality evaluation.
 
 Known boundaries: English only, unknown audio/video speakers, no live Meet/Teams connection or cancellation, one backend worker process, no job resume after backend restart, possible OS temporary-file leftovers after forced termination, no speech/extraction accuracy benchmark. Transcript size and context-boundary limits are documented in the application README.
+
+## 10 October 2026 — fine-tuned BERT dialogue classifier
+
+User confirmed BERT as the primary dialogue-act classifier. Branch:
+`feat/bert-dialogue-classifier`; first checkpoint `debe0eb` adds official AMI
+preparation, training/evaluation and local serving. Work is Codex-assisted at
+Rana's direction using Rana's configured identity, not independent member work.
+
+Prepared official AMI v1.6.2 manual dialogue-act annotations with a custom
+session-group-disjoint split: 82,294 / 13,593 / 14,882 examples from 99 / 19 / 21
+meetings. Corpus-authored labels are not claimed as new team annotations.
+
+Completed a CPU pilot fine-tuning Google's 2-layer/128-hidden BERT on 24,000
+training examples, five epochs, all encoder/head parameters. Best epoch 5:
+validation macro F1 0.4219 versus initial TF-IDF/logistic baseline 0.2989 and
+majority 0.0296. Validation accuracy 0.5724. Final test remains unused, reserved
+for the selected full model. See `meetmind/backend/reports/bert-tiny-pilot-v1`
+for provenance, per-class scores, confusion matrix and limitations.
+
+Implemented independent dialogue analysis API/UI, score/margin review flags,
+local-only validated checkpoint loading, weights fingerprinting, persistence and
+validation-only checkpoint selection. Dialogue acts do not automatically become
+confirmed action items. Ollama extraction remains separate and optional.
+
+30 backend tests passed; TypeScript/Vite production build passed. Real model
+smoke checked API/persistence/stable inference. Browser verified real BERT
+results, refresh and mobile behavior. Initial cold loading exceeded a 60-second
+browser wait; completed later and warm rerun passed. Browser cold allowance is
+now three minutes; no latency guarantee is claimed.
+The browser check also passed after restarting the isolated test backend with
+the updated allowance. Test servers used ports 8012/5182 and a separate database.
+
+Full BERT-base training has not run. Configuration and an unexecuted portable
+GPU notebook are provided for validation-only hyperparameter comparison.
+Remaining: stronger/full-model training, final frozen-test evaluation,
+commitment-specific labels/evaluation, spaCy/owner/deadline rules, editable
+corrections and confidence calibration. AMI dialogue-act metrics are not
+end-to-end task accuracy. Source code is pushed; ignored weights remain local.

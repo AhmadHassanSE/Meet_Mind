@@ -21,6 +21,19 @@ const assert = require('node:assert/strict');
     await page.reload();
     await page.getByRole('button', { name: new RegExp(title) }).click();
     await page.getByRole('heading', { name: 'Transcript evidence' }).waitFor();
+    if (process.env.MEETMIND_BERT_SMOKE === '1') {
+      await page.getByRole('button', { name: 'Analyze with BERT' }).click();
+      await page.locator('.dialogue-results article').first().waitFor({ timeout: 180000 });
+      assert.equal(await page.locator('.dialogue-results article').count(), 1);
+      await page.getByText(/Model score \d/).waitFor();
+      await page.reload();
+      await page.getByRole('button', { name: new RegExp(title) }).click();
+      await page.locator('.dialogue-results article').first().waitFor();
+      await page.setViewportSize({ width: 390, height: 844 });
+      assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'BERT mobile overflow');
+      await page.setViewportSize({ width: 1440, height: 1000 });
+      console.log('Real BERT inference, result persistence and mobile layout verified through the browser.');
+    }
     await page.getByRole('button', { name: 'Upload transcript' }).click();
     for (const name of ['Audio', 'Meeting recording']) {
       await page.getByRole('tab', { name, exact: true }).click();
