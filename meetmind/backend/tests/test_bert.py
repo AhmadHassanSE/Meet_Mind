@@ -88,7 +88,12 @@ def test_action_labels_always_require_review_even_at_high_score():
     classifier.labels = ['inf', 'off', 'sug']
     classifier.metadata = {'context_turns': 2, 'max_length': 96, 'review_threshold': .7,
                            'review_margin': .15, 'label_descriptions': {'inf': 'Inform', 'off': 'Offer', 'sug': 'Suggest'}}
-    classifier.tokenizer = lambda *args, **kwargs: {}
+    def tokenize(*args, **kwargs):
+        if kwargs.get('return_length'):
+            return {'length': [2 if len(args) == 1 else 5] * 2}
+        return {'attention_mask': torch.ones((2, 5), dtype=torch.long),
+                'token_type_ids': torch.tensor([[0, 0, 0, 0, 1]] * 2)}
+    classifier.tokenizer = tokenize
     classifier.model = lambda **kwargs: SimpleNamespace(logits=torch.tensor([[0., 9., 0.], [1., 1., 1.]]))
     results = classifier.predict([{'id': 2, 'text': 'I will do it', 'speaker': 'Sara'},
                                   {'id': 8, 'text': 'Maybe', 'speaker': None}])
@@ -99,6 +104,31 @@ def test_action_labels_always_require_review_even_at_high_score():
     assert results[1]['source_id'] == 8
     assert 'low_model_score' in results[1]['review_reasons']
     assert 'close_alternative_label' in results[1]['review_reasons']
+
+
+def test_long_target_and_long_context_are_explicitly_flagged(tmp_path):
+    torch = pytest.importorskip('torch')
+    transformers = pytest.importorskip('transformers')
+    from types import SimpleNamespace
+    vocabulary = tmp_path / 'vocab.txt'
+    vocabulary.write_text('[PAD]\n[UNK]\n[CLS]\n[SEP]\n[MASK]\nsend\nyes\nother\nspeaker\n:\n', encoding='utf-8')
+    classifier = bert.DialogueClassifier.__new__(bert.DialogueClassifier)
+    classifier.torch = torch
+    classifier.labels = ['inf', 'off', 'sug']
+    classifier.metadata = {'context_turns': 1, 'max_length': 12, 'review_threshold': .7,
+                           'review_margin': .15, 'label_descriptions': {'inf': 'Inform', 'off': 'Offer', 'sug': 'Suggest'}}
+    classifier.tokenizer = transformers.BertTokenizerFast(vocab_file=str(vocabulary))
+    classifier.model = lambda **kwargs: SimpleNamespace(logits=torch.tensor([[9., 0., 0.], [9., 0., 0.]]))
+    results = classifier.predict([{'id': 1, 'text': 'send ' * 40, 'speaker': 'Sara'},
+                                  {'id': 2, 'text': 'yes', 'speaker': 'Ahmed'}])
+    assert results[0]['target_tokens'] == 40
+    assert results[0]['processed_target_tokens'] < 40
+    assert results[0]['processed_tokens'] == 12
+    assert 'target_text_truncated' in results[0]['review_reasons']
+    assert results[0]['needs_review']  # Even though this fake model is confident.
+    assert results[1]['target_tokens'] == results[1]['processed_target_tokens'] == 1
+    assert results[1]['input_truncated'] and not results[1]['target_text_truncated']
+    assert 'context_truncated' in results[1]['review_reasons']
 
 
 def test_selection_uses_validation_and_preserves_existing_model(tmp_path):

@@ -67,15 +67,27 @@ class DialogueClassifier:
         with self.torch.inference_mode():
             for offset in range(0, len(pairs), 32):
                 batch = pairs[offset:offset + 32]
+                full_lengths = self.tokenizer([x[0] for x in batch], [x[1] for x in batch],
+                    truncation=False, padding=False, return_length=True, verbose=False)['length']
+                target_lengths = self.tokenizer([x[0] for x in batch], add_special_tokens=False,
+                    truncation=False, padding=False, return_length=True, verbose=False)['length']
                 tokens = self.tokenizer([x[0] for x in batch], [x[1] for x in batch],
                                          padding=True, truncation='longest_first',
                                          max_length=self.metadata['max_length'], return_tensors='pt')
                 probabilities = self.model(**tokens).logits.softmax(-1).tolist()
-                for segment, probs in zip(segments[offset:offset + 32], probabilities):
+                for index, (segment, probs) in enumerate(zip(segments[offset:offset + 32], probabilities)):
                     top = sorted(range(len(probs)), key=lambda i: probs[i], reverse=True)
                     label, score = self.labels[top[0]], probs[top[0]]
                     margin = score - probs[top[1]]
                     reasons = []
+                    processed_tokens = int(tokens['attention_mask'][index].sum())
+                    # BERT sentence A has CLS + SEP in addition to retained target tokens.
+                    processed_target = int(((tokens['token_type_ids'][index] == 0) &
+                                            (tokens['attention_mask'][index] != 0)).sum()) - 2
+                    input_truncated = full_lengths[index] > processed_tokens
+                    target_truncated = target_lengths[index] > processed_target
+                    if input_truncated:
+                        reasons.append('target_text_truncated' if target_truncated else 'context_truncated')
                     if score < threshold: reasons.append('low_model_score')
                     if margin < margin_threshold: reasons.append('close_alternative_label')
                     if label in ACTION_LABELS: reasons.append('possible_action_is_not_a_confirmed_commitment')
@@ -83,6 +95,10 @@ class DialogueClassifier:
                                     'description': self.metadata['label_descriptions'][label],
                                     'score': score, 'margin': margin,
                                     'possible_action': label in ACTION_LABELS,
+                                    'input_truncated': input_truncated,
+                                    'target_text_truncated': target_truncated,
+                                    'input_tokens': full_lengths[index], 'processed_tokens': processed_tokens,
+                                    'target_tokens': target_lengths[index], 'processed_target_tokens': processed_target,
                                     'needs_review': bool(reasons), 'review_reasons': reasons,
                                     'top_labels': [{'label': self.labels[i], 'score': probs[i]} for i in top[:3]]})
         return results

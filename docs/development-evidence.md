@@ -68,3 +68,25 @@ Remaining: stronger/full-model training, final frozen-test evaluation,
 commitment-specific labels/evaluation, spaCy/owner/deadline rules, editable
 corrections and confidence calibration. AMI dialogue-act metrics are not
 end-to-end task accuracy. Source code is pushed; ignored weights remain local.
+
+## 10 October 2026 — seven-file real transcript verification
+
+Used actual file upload and Analyze with BERT on five deterministically selected
+full AMI validation meetings plus two existing workspace reports. On 1,625
+annotated AMI utterances, 900 labels were correct: accuracy 0.5538, macro F1
+0.4070. This reuses a subset of validation and is not new test-set evidence;
+final test remains untouched. Workspace reports have no verified labels, so no
+accuracy is claimed for them.
+
+Found and fixed missing truncation review flags and mobile overflow from long
+report separators. Model weights/predicted labels remain unchanged. Reports
+still need cleaning/segmentation; the truncation fix warns about partial input
+coverage rather than recovering discarded text. Scores remain uncalibrated;
+131 incorrect AMI labels were not flagged by the heuristic review rules.
+
+After fixes, all seven files passed API source/persistence/export checks and
+real Chrome upload/analysis/refresh/mobile checks. 31 tests and production build
+passed. Compact evidence is in
+`meetmind/backend/reports/real-meeting-audit-2026-10-10`; full local fixtures are
+ignored. Private transcript text was not pushed. Work remains Codex-assisted at
+Rana's direction under Rana's configured Git identity.

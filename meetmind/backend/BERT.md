@@ -156,6 +156,9 @@ BERT. Missing checkpoint/dependencies return 503 without altering the meeting.
 Scores are uncalibrated softmax outputs. The initial .7 score and .15 margin
 review cutoffs are heuristic defaults, not validated confidence calibration.
 Every possible-action prediction requires human review regardless of score.
+Serving also measures original and retained input/target token lengths. Shortened
+target text or context is explicitly marked for review, even at high scores.
+This warns about lost coverage; it does not replace evaluated turn segmentation.
 
 ```powershell
 uv run --extra nlp pytest -q
@@ -164,6 +167,8 @@ uv run --extra nlp python -m scripts.smoke_bert
 
 Observed pilot results and error analysis are in
 [reports/bert-tiny-pilot-v1/README.md](reports/bert-tiny-pilot-v1/README.md).
+The seven-file real-meeting API/browser audit and resulting fixes are in
+[reports/real-meeting-audit-2026-10-10/README.md](reports/real-meeting-audit-2026-10-10/README.md).
 Real browser inference can be checked with the frontend smoke script by setting
 `MEETMIND_BERT_SMOKE=1`, against a dedicated test database and running servers.
 The first request can take time to load Windows dependencies/weights; rehearse
