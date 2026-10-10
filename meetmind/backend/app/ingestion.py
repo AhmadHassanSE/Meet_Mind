@@ -86,7 +86,7 @@ def parse_captions(text, suffix):
     return result
 
 
-def parse_docx(data):
+def docx_text(data):
     try:
         with zipfile.ZipFile(io.BytesIO(data)) as archive:
             info = archive.getinfo("word/document.xml")
@@ -100,9 +100,13 @@ def parse_docx(data):
         paragraphs = []
         for paragraph in root.findall(".//w:p", ns):
             paragraphs.append("".join(node.text or "" for node in paragraph.findall(".//w:t", ns)))
-        return parse_text("\n".join(paragraphs))
+        return "\n".join(paragraphs)
     except (zipfile.BadZipFile, KeyError, ET.ParseError, RuntimeError) as error:
         raise IngestionError("Corrupt or unsupported DOCX document") from error
+
+
+def parse_docx(data):
+    return parse_text(docx_text(data))
 
 
 def parse_transcript(data, suffix):
