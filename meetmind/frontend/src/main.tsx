@@ -7,12 +7,20 @@ import { CommitmentResults, type CommitmentMeeting } from './CommitmentResults';
 import { PreparedTranscript, type PreparedMeeting } from './PreparedTranscript';
 
 type DialoguePrediction = { source_id: number; label: string; description: string; score: number; possible_action: boolean; needs_review: boolean; review_reasons: string[]; top_labels: { label: string; score: number }[] };
-type Meeting = PreparedMeeting & Omit<CommitmentMeeting, 'segments'> & { id: string; title: string; status: string; model: string | null; source_type?: string; speaker_labels?: string; unattributed_segments?: number; meeting_code?: string; segments: { id: number; speaker: string | null; text: string; source: string; start?: number | null; end?: number | null; parent_source_id?: number; source_start?: number; source_end?: number }[]; dialogue_analysis?: { predictions: DialoguePrediction[]; model: { model_name: string; checkpoint_stage: string } } };
+type Meeting = PreparedMeeting & Omit<CommitmentMeeting, 'segments'> & { id: string; title: string; status: string; model: string | null; source_type?: string; speaker_labels?: string; diarization?: string; diarization_note?: string | null; unattributed_segments?: number; meeting_code?: string; segments: { id: number; speaker: string | null; text: string; source: string; start?: number | null; end?: number | null; parent_source_id?: number; source_start?: number; source_end?: number }[]; dialogue_analysis?: { predictions: DialoguePrediction[]; model: { model_name: string; checkpoint_stage: string } } };
 async function request<T>(path: string, body?: object): Promise<T> {
   const response = await fetch(`/api${path}`, body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : undefined);
   const data = await response.json();
   if (!response.ok) throw new Error(typeof data.detail === 'string' ? data.detail : 'Request failed. Check your input and try again.');
   return data;
+}
+function speakerNote(m: Meeting) {
+  const unknown = `${m.unattributed_segments ?? 0} utterance(s) could not be attributed and are shown as Unknown speaker.`;
+  const why = m.diarization_note ? ` Speaker separation was unavailable: ${m.diarization_note}.` : '';
+  if (m.speaker_labels === 'diarization_hints') return `Voices were separated by a speaker model and named from Meet captions, so names can still be wrong. ${unknown}`;
+  if (m.speaker_labels === 'diarization') return `Voices were separated by a speaker model but no names could be matched, so they appear as Speaker 1, Speaker 2 and so on. ${unknown}`;
+  if (m.speaker_labels === 'dom_hints') return `Speaker names come from Meet captions and may be wrong when people talk over each other. ${unknown}${why}`;
+  return `No speaker information was captured for this meeting, so speakers are unknown.${why}`;
 }
 function App() {
   const [meetings, setMeetings] = useState<Meeting[]>([]);
@@ -46,7 +54,7 @@ function App() {
       <button className="back" onClick={() => setSelected(null)}>← All meetings</button>
       <p className="eyebrow">MEETING WORKSPACE</p><h1>{selected.title}</h1>
       <div className="row"><p className="muted">{selected.segments.length} utterances · {selected.source_type === 'google_meet' ? `Google Meet${selected.meeting_code ? ` ${selected.meeting_code}` : ''}` : selected.source_type || 'text'} · {selected.status}</p><button className="primary" disabled={busy !== null} onClick={extract}>{busy === 'extract' ? 'Extracting locally…' : 'Extract commitments'}<Cpu size={17}/></button></div>
-      {selected.source_type === 'google_meet' && <p className="muted">{selected.speaker_labels === 'dom_hints' ? `Speaker names come from Meet captions and may be wrong when people talk over each other. ${selected.unattributed_segments ?? 0} utterance(s) could not be attributed and are shown as Unknown speaker.` : 'No speaker hints were captured for this meeting, so speakers are unknown.'}</p>}
+      {selected.source_type === 'google_meet' && <p className="muted">{speakerNote(selected)}</p>}
       <section className="panel bert-summary"><div className="row"><div><h2>BERT dialogue analysis</h2><p className="muted">{health.bert.status}{health.bert.stage ? ` · ${health.bert.stage}` : ''}</p></div><button className="primary" disabled={busy !== null} onClick={classify}>{busy === 'bert' ? 'Processing locally…' : 'Analyze with BERT'}<Cpu size={17}/></button></div><p className="muted">Classifies dialogue acts and highlights possible actions. Offers and suggestions require review before becoming tasks. Scores are uncalibrated model outputs.</p>{selected.dialogue_analysis && <><small className="muted">{selected.dialogue_analysis.model.model_name} · {selected.dialogue_analysis.model.checkpoint_stage}</small><div className="dialogue-results">{selected.dialogue_analysis.predictions.map(prediction => <article key={prediction.source_id}><span className={`pill${prediction.possible_action ? ' warning' : ''}`}>#{prediction.source_id} · {prediction.description}</span> <small className="muted">Model score {prediction.score.toFixed(3)}</small><p>{selected.segments.find(s => s.id === prediction.source_id)?.text}</p>{prediction.needs_review && <small className="mint">Review: {prediction.review_reasons.map(reason => reason.replaceAll('_', ' ')).join('; ')}</small>}<small className="muted dialogue-alternatives">Alternatives: {prediction.top_labels.map(label => `${label.label} ${label.score.toFixed(3)}`).join(' · ')}</small></article>)}</div></>}</section>
       <div className="row downloads"><span className="muted">Download transcript</span><div><a href={`/api/meetings/${selected.id}/transcript?format=txt`}>TXT</a> <a href={`/api/meetings/${selected.id}/transcript?format=json`}>JSON</a>{selected.segments.some(s => s.start != null) && <> <a href={`/api/meetings/${selected.id}/transcript?format=vtt`}>VTT</a></>}</div></div>
       <PreparedTranscript meeting={selected}/>

@@ -31,6 +31,17 @@ The `extension/` folder is a Chrome (116+) extension that records a Google Meet 
 
 Extra configuration: `MEETMIND_MEET_LAG_MS` (default 500, how long Meet captions lag behind speech) and `MEETMIND_MEET_MIN_CONFIDENCE` (default 0.4, minimum overlap margin before a speaker name is attached; below it the utterance stays "Unknown speaker").
 
+### Speaker separation with pyannote (optional)
+
+Caption hints alone only name whoever the page says is talking. With the `diarization` extra, pyannote.audio first groups the recording into distinct voices, and the caption hints then only have to name each voice. This holds up better against caption lag and gives separate "Speaker 1, Speaker 2" labels even when no names match.
+
+```powershell
+uv sync --extra nlp --extra diarization --group dev
+uv run --extra nlp --extra diarization uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
+
+The default model `pyannote/speaker-diarization-community-1` is gated: open its page on Hugging Face and accept the conditions, create a read token, then set `HF_TOKEN` (or run `hf auth login`) before starting the backend. If pyannote or the token is missing, or it fails, the meeting still saves with caption-hint labels and the meeting page says why. Configuration: `MEETMIND_DIARIZATION` (`auto` default, `off` to disable), `MEETMIND_DIARIZATION_MODEL`, `MEETMIND_MAX_SPEAKERS` (optional upper bound). It runs on CPU after transcription, loads the model per meeting and frees it afterwards, so expect extra minutes and memory for long meetings. A Whisper segment is assigned to one speaker, so a long segment containing two voices takes the dominant one.
+
 Recording other people needs their knowledge. The extension shows a red banner on the Meet page and a REC badge while it records; tell participants before you start.
 
 ## Current scope

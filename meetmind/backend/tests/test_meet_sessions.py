@@ -13,6 +13,7 @@ START = 1_700_000_000_000
 def client(tmp_path, monkeypatch):
     monkeypatch.setattr(main, 'DB_PATH', tmp_path / 'test.db')
     monkeypatch.setattr(meet, 'ffmpeg_path', lambda: 'ffmpeg')
+    monkeypatch.setattr(meet.diarize, 'MODE', 'off')  # never load a real model in tests
     meet.sessions.clear()
     with TestClient(main.app) as client:
         yield client
@@ -161,3 +162,52 @@ def test_full_queue_returns_429_and_session_can_retry(client, monkeypatch):
         assert client.post(f'/api/meet/sessions/{session_id}/finish').status_code == 429
     assert not meet.sessions[session_id]['finishing']
     assert await_job(client, client.post(f'/api/meet/sessions/{session_id}/finish').json()['id'])['status'] == 'completed'
+
+
+def run_with_diarizer(client, monkeypatch, diarizer, events):
+    fake_transcribe(monkeypatch)
+    monkeypatch.setattr(meet.diarize, 'MODE', 'auto')
+    monkeypatch.setattr(meet.diarize, 'diarize', diarizer)
+    session_id = start(client)
+    client.post(f'/api/meet/sessions/{session_id}/audio?seq=0', content=b'a')
+    if events:
+        client.post(f'/api/meet/sessions/{session_id}/hints', json={'events': events})
+    job = await_job(client, client.post(f'/api/meet/sessions/{session_id}/finish').json()['id'])
+    assert job['status'] == 'completed'
+    return client.get('/api/meetings/' + job['meeting_id']).json()
+
+
+TURNS = [(0.5, 4.5, 'SPEAKER_00'), (4.8, 7.5, 'SPEAKER_01')]
+
+
+def test_diarization_separates_voices_and_hints_name_them(client, monkeypatch):
+    events = [{'t': START + 500, 'speaker': 'You', 'active': True}, {'t': START + 4500, 'speaker': 'You', 'active': False},
+              {'t': START + 4800, 'speaker': 'Sara', 'active': True}, {'t': START + 7500, 'speaker': 'Sara', 'active': False}]
+    meeting = run_with_diarizer(client, monkeypatch, lambda path, update=None: TURNS, events)
+    assert meeting['speaker_labels'] == 'diarization_hints' and meeting['diarization'] == 'pyannote'
+    assert [s['speaker'] for s in meeting['segments']] == ['Ali', 'Sara', None]
+
+
+def test_diarization_without_hints_gives_generic_speaker_labels(client, monkeypatch):
+    meeting = run_with_diarizer(client, monkeypatch, lambda path, update=None: TURNS, [])
+    assert meeting['speaker_labels'] == 'diarization'
+    assert [s['speaker'] for s in meeting['segments']] == ['Speaker 1', 'Speaker 2', None]
+
+
+def test_unavailable_diarization_falls_back_to_caption_hints(client, monkeypatch):
+    def unavailable(path, update=None):
+        raise meet.diarize.DiarizationUnavailable('No Hugging Face token found')
+    events = [{'t': START + 500, 'speaker': 'You', 'active': True}, {'t': START + 4500, 'speaker': 'You', 'active': False}]
+    meeting = run_with_diarizer(client, monkeypatch, unavailable, events)
+    assert meeting['speaker_labels'] == 'dom_hints' and meeting['diarization'] == 'unavailable'
+    assert meeting['diarization_note'] == 'No Hugging Face token found'
+    assert meeting['segments'][0]['speaker'] == 'Ali'
+
+
+def test_diarizer_crash_does_not_fail_the_meeting(client, monkeypatch):
+    def crash(path, update=None):
+        raise RuntimeError('out of memory')
+    meeting = run_with_diarizer(client, monkeypatch, crash, [])
+    assert meeting['speaker_labels'] == 'unavailable' and meeting['diarization'] == 'unavailable'
+    assert 'caption hints only' in meeting['diarization_note']
+    assert all(s['speaker'] is None for s in meeting['segments'])

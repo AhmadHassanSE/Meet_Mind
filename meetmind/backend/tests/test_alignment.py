@@ -1,4 +1,5 @@
-from app.connectors.alignment import build_intervals, label_segments, normalize_events
+from app.connectors.alignment import (build_intervals, label_from_intervals, label_segments, name_clusters,
+                                      normalize_events, turns_to_intervals)
 
 
 def seg(start, end, text='Send the report.'):
@@ -66,3 +67,32 @@ def test_open_interval_runs_to_session_end_and_inputs_are_not_mutated():
 
 def test_zero_length_segment_is_unattributed():
     assert label_segments([seg(3, 3)], [on(0, 'Ali'), off(5, 'Ali')])[0]['speaker'] is None
+
+
+TURNS = [(0, 10, 'SPEAKER_01'), (10, 20, 'SPEAKER_00'), (20, 26, 'SPEAKER_01'), (26, 40, 'SPEAKER_02')]
+
+
+def test_clusters_are_named_from_overlapping_hints():
+    hinted = build_intervals([on(0, 'Ali'), off(26, 'Ali'), on(26, 'Sara'), off(40, 'Sara')])
+    names = name_clusters(TURNS, hinted)
+    assert names['SPEAKER_01'] == 'Ali' and names['SPEAKER_02'] == 'Sara'
+    assert names['SPEAKER_00'] == 'Ali'  # one person can own several clusters
+
+
+def test_unnamed_clusters_get_stable_generic_labels_in_order_of_appearance():
+    names = name_clusters(TURNS, {})
+    assert names == {'SPEAKER_01': 'Speaker 1', 'SPEAKER_00': 'Speaker 2', 'SPEAKER_02': 'Speaker 3'}
+
+
+def test_ambiguous_or_thin_hints_do_not_name_a_cluster():
+    even = build_intervals([on(0, 'Ali'), off(5, 'Ali'), on(5, 'Sara'), off(10, 'Sara')])
+    assert name_clusters([(0, 10, 'A')], even) == {'A': 'Speaker 1'}  # tied overlap
+    thin = build_intervals([on(0, 'Ali'), off(1, 'Ali')])
+    assert name_clusters([(0, 10, 'A')], thin) == {'A': 'Speaker 1'}  # below min_seconds
+
+
+def test_segments_are_labelled_from_diarization_turns():
+    names = {'SPEAKER_01': 'Ali', 'SPEAKER_00': 'Sara', 'SPEAKER_02': 'Speaker 1'}
+    labelled = label_from_intervals([seg(1, 4), seg(11, 14), seg(27, 30), seg(9, 11)], turns_to_intervals(TURNS, names))
+    assert [s['speaker'] for s in labelled[:3]] == ['Ali', 'Sara', 'Speaker 1']
+    assert labelled[3]['speaker'] is None  # straddles two speakers evenly

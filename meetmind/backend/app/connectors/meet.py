@@ -14,7 +14,8 @@ from pydantic import BaseModel, Field
 from ..ingestion import IngestionError
 from ..media import MAX_MEDIA_BYTES, ffmpeg_path, transcribe_media
 from ..preprocessing import prepare
-from .alignment import label_segments, normalize_events
+from . import diarize
+from .alignment import build_intervals, label_from_intervals, name_clusters, normalize_events, turns_to_intervals
 
 LAG_SECONDS = float(os.getenv("MEETMIND_MEET_LAG_MS", "500")) / 1000
 MIN_CONFIDENCE = float(os.getenv("MEETMIND_MEET_MIN_CONFIDENCE", "0.4"))
@@ -129,21 +130,50 @@ def build_router(save, update_job, submit_job):
                     continue
         return normalize_events(raw, session["started_at_ms"], session["self_name"])
 
+    def label(session, segments, events, duration, update):
+        """Return ``(labelled segments, speaker_labels, diarization, note)``.
+
+        pyannote separates the voices; caption hints only name them. Without
+        pyannote (or if it fails) the hints label segments directly.
+        """
+        hinted = build_intervals(events, LAG_SECONDS, duration)
+        if not diarize.enabled():
+            note = None
+            state = "off"
+        else:
+            try:
+                turns = diarize.diarize(session["dir"] / "decoded.wav", update)
+                state, note = "pyannote", None
+            except diarize.DiarizationUnavailable as error:
+                turns, state, note = [], "unavailable", str(error)
+            except Exception:
+                logging.exception("Diarization failed for a Meet session")
+                turns, state, note = [], "unavailable", "Diarization failed; speaker names come from caption hints only"
+            if turns:
+                names = name_clusters(turns, hinted)
+                labelled = label_from_intervals(segments, turns_to_intervals(turns, names), MIN_CONFIDENCE)
+                return labelled, "diarization_hints" if set(names.values()) & set(hinted) else "diarization", state, note
+            if state == "pyannote":
+                state, note = "unavailable", "Diarization found no speech turns"
+        labelled = label_from_intervals(segments, hinted, MIN_CONFIDENCE)
+        return labelled, "dom_hints" if events else "unavailable", state, note
+
     def run(job_id, session_id, session):
         try:
             audio_path = session["dir"] / "audio.webm"
             segments, metadata = transcribe_media(audio_path, lambda s, p, m: update_job(job_id, s, p, m))
-            update_job(job_id, "aligning", 95, "Matching speech to speakers")
+            update_job(job_id, "aligning", 90, "Matching speech to speakers")
             events = read_events(session)
-            labelled = label_segments(segments, events, LAG_SECONDS, MIN_CONFIDENCE, end=metadata.get("duration"))
+            labelled, labels, diarization, note = label(
+                session, segments, events, metadata.get("duration"), lambda s, p, m: update_job(job_id, s, p, m))
             prepared = prepare("\n".join(s["source"] for s in labelled), labelled)
             unattributed = sum(1 for s in labelled if not s["speaker"])
-            labels = "dom_hints" if events else "unavailable"
             meeting = {"id": str(uuid4()), "title": session["title"],
                        "transcript": "\n".join(s["source"] for s in labelled), "segments": labelled,
                        "actions": [], "status": "uploaded", "model": None, "source_type": "google_meet",
                        "filename": None, "meeting_code": session["meeting_code"], **metadata,
-                       "speaker_labels": labels, "unattributed_segments": unattributed, **prepared}
+                       "speaker_labels": labels, "diarization": diarization, "diarization_note": note,
+                       "unattributed_segments": unattributed, **prepared}
             save(meeting)
             update_job(job_id, "completed", 100, "Transcript ready", meeting["id"])
         except IngestionError as error:

@@ -12,6 +12,9 @@ nlp = [
     "spacy>=3.8.7,<3.9",
     "en-core-web-sm",
 ]
+diarization = [
+    "pyannote-audio>=4,<5",
+]
 
 [[tool.uv.index]]
 name = "pytorch-cpu"

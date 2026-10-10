@@ -16,6 +16,7 @@ Records the audio of a Google Meet tab plus your microphone and sends it to your
 - `offscreen.js` mixes tab audio (everyone else) with the mic, records WebM/Opus in 10 s chunks and uploads them in order with retries. Tab audio is played back so you still hear the call.
 - `content.js` reads the caption region, tracks which named speaker's text is changing, and sends only `{time, speaker, active}` events. Caption text is never sent.
 - The backend aligns Whisper segments with those speaker intervals (`app/connectors/alignment.py`). Segments with no clear speaker stay "Unknown speaker" instead of guessing.
+- If the backend has the optional `diarization` extra and a Hugging Face token (see `meetmind/README.md`), pyannote separates the voices first and the caption hints only name them. Without it, the hints label segments directly.
 
 ## Limits
 

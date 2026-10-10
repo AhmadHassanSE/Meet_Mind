@@ -53,13 +53,18 @@ def overlap(a_start, a_end, b_start, b_end):
 
 
 def label_segments(segments, events, lag=0.0, min_confidence=0.4, end=None):
+    """Label segments from speaker hint events; see ``label_from_intervals``."""
+    return label_from_intervals(segments, build_intervals(events, lag, end), min_confidence)
+
+
+def label_from_intervals(segments, intervals, min_confidence=0.4):
     """Return copies of ``segments`` with ``speaker`` and ``speaker_confidence`` set.
 
-    Confidence is the gap between the best and runner-up speaker overlap as a
-    fraction of the segment length, so simultaneous speakers lower confidence.
-    Below ``min_confidence`` the speaker is ``None``.
+    ``intervals`` maps a speaker to sorted ``(start, end)`` spans. Confidence is
+    the gap between the best and runner-up speaker overlap as a fraction of the
+    segment length, so simultaneous speakers lower confidence. Below
+    ``min_confidence`` the speaker is ``None``.
     """
-    intervals = build_intervals(events, lag, end)
     labelled = []
     for segment in segments:
         start, stop = segment["start"], segment["end"]
@@ -77,3 +82,38 @@ def label_segments(segments, events, lag=0.0, min_confidence=0.4, end=None):
                 speaker = totals[0][2]
         labelled.append({**segment, "speaker": speaker, "speaker_confidence": round(min(confidence, 1.0), 2)})
     return labelled
+
+
+def name_clusters(turns, hint_intervals, min_seconds=2.0, min_margin=0.3):
+    """Name diarization clusters from speaker hints.
+
+    ``turns`` are ``(start, end, cluster)`` from a diarizer. A cluster takes the
+    hinted name it overlaps most when that overlap is at least ``min_seconds``
+    and beats the runner-up by ``min_margin`` of itself. Other clusters get
+    ``Speaker N`` in order of first appearance, so voices stay distinct even
+    when no name is known.
+    """
+    spans = defaultdict(list)
+    for start, stop, cluster in turns:
+        spans[cluster].append((start, stop))
+    order = sorted(spans, key=lambda cluster: min(start for start, _ in spans[cluster]))
+    names, unnamed = {}, 0
+    for cluster in order:
+        scores = sorted(((sum(overlap(start, stop, a, b) for start, stop in spans[cluster] for a, b in hinted), name)
+                         for name, hinted in hint_intervals.items()), reverse=True)
+        best = scores[0][0] if scores else 0.0
+        runner_up = scores[1][0] if len(scores) > 1 else 0.0
+        if best >= min_seconds and (best - runner_up) / best >= min_margin:
+            names[cluster] = scores[0][1]
+        else:
+            unnamed += 1
+            names[cluster] = f"Speaker {unnamed}"
+    return names
+
+
+def turns_to_intervals(turns, names):
+    """Group diarization turns into ``{name: sorted spans}`` for ``label_from_intervals``."""
+    intervals = defaultdict(list)
+    for start, stop, cluster in turns:
+        intervals[names[cluster]].append((start, stop))
+    return {name: sorted(spans) for name, spans in intervals.items()}
