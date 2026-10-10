@@ -19,6 +19,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from .ingestion import IngestionError, parse_text, parse_transcript, MAX_TEXT_BYTES
 from .media import AUDIO_FORMATS, VIDEO_FORMATS, MAX_MEDIA_BYTES, MODEL_NAME, ffmpeg_path, transcribe_media
+from . import bert
 
 DB_PATH = Path(os.getenv("MEETMIND_DB", str(Path(__file__).parents[1] / "meetmind.db")))
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434")
@@ -88,7 +89,7 @@ def get_meeting(meeting_id):
 
 @app.get("/api/health")
 async def health():
-    ingestion = {"ffmpeg": bool(ffmpeg_path()), "speech_model": MODEL_NAME}
+    ingestion = {"ffmpeg": bool(ffmpeg_path()), "speech_model": MODEL_NAME, "bert": bert.status()}
     try:
         async with httpx.AsyncClient(timeout=3) as client:
             response = await client.get(f"{OLLAMA_URL}/api/tags")
@@ -265,6 +266,19 @@ def extraction_batches(segments):
     if current:
         batches.append(current)
     return batches
+
+
+@app.post("/api/meetings/{meeting_id}/classify")
+def classify_dialogue(meeting_id: str):
+    meeting = get_meeting(meeting_id)
+    try:
+        result = bert.classify(meeting["segments"])
+    except bert.BertUnavailable as error:
+        raise HTTPException(503, str(error)) from error
+    # Separate from commitments: suggest/offer labels are not approved tasks.
+    meeting["dialogue_analysis"] = result
+    save(meeting)
+    return meeting
 
 
 @app.post("/api/meetings/{meeting_id}/extract")

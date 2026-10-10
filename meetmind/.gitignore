@@ -1,7 +1,11 @@
 node_modules/
 dist/
 .venv/
+.venv-nlp/
 __pycache__/
 .pytest_cache/
 *.db
 .env
+backend/data/
+backend/models/
+backend/runs/

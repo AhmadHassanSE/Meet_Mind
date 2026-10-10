@@ -4,6 +4,17 @@ version = "0.1.0"
 requires-python = ">=3.12,<3.14"
 dependencies = ["fastapi>=0.115", "uvicorn>=0.34", "httpx>=0.28", "python-multipart>=0.0.20", "faster-whisper>=1.2"]
 
+[project.optional-dependencies]
+nlp = ["torch>=2.6,<3", "transformers>=4.48,<5", "scikit-learn>=1.6,<2"]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+
 [dependency-groups]
 dev = ["pytest>=8"]
 
