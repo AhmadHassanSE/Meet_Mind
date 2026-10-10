@@ -195,11 +195,18 @@ def polarity(doc):
     return cancelled and not negative, negative
 
 
-def resolve_owner(proposal, unit, doc):
+def resolve_owner(proposal, unit, doc, task_doc):
     speaker = unit['speaker']
     subjects = [t for t in doc if t.dep_ in {'nsubj', 'nsubjpass'} and t.head.dep_ == 'ROOT']
+    task_verbs = {t.lemma_ for t in task_doc if t.pos_ == 'VERB'}
+    matched_subjects = [t for t in doc if t.dep_ in {'nsubj', 'nsubjpass'} and t.head.lemma_ in task_verbs]
+    if matched_subjects:
+        subjects = matched_subjects
     if len(subjects) == 1 and subjects[0].lower_ == 'i' and speaker:
         return speaker, 'speaker', []
+    vocative = re.match(r'([A-Z][\w\'-]*(?:\s+[A-Z][\w\'-]*){0,3}),\s*(?:can|could|would|will|please)\b', proposal.quote)
+    if vocative:
+        return vocative[1], 'explicit_vocative', []
     if len(subjects) == 1 and subjects[0].lower_ in {'we', 'you', 'he', 'she', 'they', 'it'}:
         return None, 'unresolved', ['ambiguous_owner_pronoun']
     candidate = proposal.owner
@@ -220,8 +227,8 @@ def resolve_owner(proposal, unit, doc):
     return None, 'unresolved', ['owner_missing']
 
 
-def evidence(unit, quote):
-    a = unit['text'].index(quote)
+def evidence(unit, quote, offset=None):
+    a = unit['text'].index(quote) if offset is None else offset
     b = a + len(quote)
     parent_a, parent_b = a + unit['parent_offset'], b + unit['parent_offset']
     children = unit['children']
@@ -248,6 +255,8 @@ def ground(proposals, units, nlp):
             doc = nlp(proposal.quote)
             task_doc = nlp(proposal.task)
         reasons = ['human_review_required']
+        if unit['text'].count(proposal.quote) > 1:
+            reasons.append('repeated_quote_position_ambiguous')
         kind = proposal.kind
         cancelled, negative = polarity(doc)
         if cancelled or negative:
@@ -265,11 +274,12 @@ def ground(proposals, units, nlp):
         if not task_words or not task_words.intersection(source_words):
             discarded.append({'task': proposal.task, 'source_id': proposal.source_id, 'reason': 'task_has_no_lexical_support'})
             continue
-        owner, owner_method, owner_reasons = resolve_owner(proposal, unit, doc)
+        owner, owner_method, owner_reasons = resolve_owner(proposal, unit, doc, task_doc)
         reasons.extend(owner_reasons)
         dates = [d for d in unit['dates'] if d['text'] in proposal.quote]
         deadline = proposal.deadline.strip() if proposal.deadline else None
-        if deadline and deadline not in proposal.quote:
+        if deadline and (deadline not in proposal.quote or not any(
+                deadline in d['text'] or d['text'] in deadline for d in dates)):
             deadline = None
             reasons.append('unsupported_deadline_removed')
         if deadline is None and len(dates) == 1:
@@ -287,28 +297,32 @@ def ground(proposals, units, nlp):
                 'kind': kind, 'status': 'proposed' if kind == 'commitment' else kind,
                 'needs_review': True, 'review_reasons': reasons,
                 'owner_method': owner_method, 'deadline_candidates': dates,
-                'bert_signals': unit['bert_signals'], '_words': source_words}
+                'bert_signals': unit['bert_signals'], '_nouns': {t.lemma_.lower() for t in doc if t.pos_ in {'NOUN', 'PROPN'} and not t.is_stop},
+                '_unit_position': units.index(unit), '_quote_end': unit['text'].index(proposal.quote) + len(proposal.quote)}
         (actions if kind == 'commitment' else candidates).append(item)
     # Inspect all later turns, including turns the LLM omitted. Object overlap
     # indicates a possible cancellation, not proof of task identity or authority.
     for action in actions:
         relevant = []
-        action_units = [u for u in units if any(s['id'] in action['source_ids'] for s in u['children'])]
-        position = max(units.index(u) for u in action_units)
-        nouns = {t.lemma_.lower() for u in action_units for t in u['doc'] if t.pos_ in {'NOUN', 'PROPN'} and not t.is_stop}
-        for later in units[position + 1:]:
-            cancel, negative = polarity(later['doc'])
-            later_nouns = {t.lemma_.lower() for t in later['doc'] if t.pos_ in {'NOUN', 'PROPN'} and not t.is_stop}
-            pronoun_cancel = re.search(r'\b(?:cancel|scrap)\s+(?:it|that)\b|\bnever mind\b', later['text'], re.I)
-            if (cancel or negative) and (nouns.intersection(later_nouns) or (pronoun_cancel and units.index(later) == position + 1)):
-                relevant.append(evidence(later, later['text']))
+        position, nouns = action['_unit_position'], action['_nouns']
+        for index in range(position, len(units)):
+            later = units[index]
+            for sentence in later['doc'].sents:
+                if index == position and sentence.start_char < action['_quote_end']:
+                    continue
+                cancel, negative = polarity(sentence)
+                later_nouns = {t.lemma_.lower() for t in sentence if t.pos_ in {'NOUN', 'PROPN'} and not t.is_stop}
+                pronoun_cancel = re.search(r'\b(?:cancel|scrap)\s+(?:it|that)\b|\bnever mind\b', sentence.text, re.I)
+                if (cancel or negative) and (nouns.intersection(later_nouns) or (pronoun_cancel and index <= position + 1)):
+                    relevant.append(evidence(later, sentence.text, sentence.start_char))
         if relevant:
             action['status'] = 'possible_cancellation'
             action['review_reasons'].append('later_cancellation_requires_review')
             action['evidence'].extend(relevant)
             action['source_ids'] = sorted({i for ev in action['evidence'] for i in ev['source_ids']})
     for item in actions + candidates:
-        item.pop('_words')
+        for key in ('_nouns', '_unit_position', '_quote_end'):
+            item.pop(key)
     return {'actions': actions, 'action_candidates': candidates,
             'extraction': {'version': VERSION, 'spacy': status(), 'discarded': discarded,
                            'source_units': len(units), 'confidence_calibrated': False,

@@ -62,10 +62,45 @@ def test_explicit_and_ambiguous_owners(nlp):
         ('We will send the report.', 'Sara', None),
         ('I will send the report to Ali.', 'Ali', 'Chair'),
         ('The report will be sent.', 'Ali', None),
+        ('I think Sara will send the report.', 'Sara', 'Sara'),
     ]:
         _, units = units_for('Chair: ' + text)
         result = c.ground([proposal(units[0], owner=suggested)], units, nlp)
         assert result['actions'][0]['owner'] == expected
+
+
+def test_explicit_addressee_resolves_request_owner(nlp):
+    _, units = units_for('Chair: Ali, can you book the room?')
+    result = c.ground([proposal(units[0], task='Book the room', kind='request')], units, nlp)
+    assert result['action_candidates'][0]['owner'] == 'Ali'
+
+
+@pytest.mark.parametrize('invalid', ['quote', 'source', 'schema', 'limit'])
+def test_ollama_response_validation(monkeypatch, invalid):
+    import asyncio
+    unit = {'source_id': 1, 'text': 'I will send the report.', 'speaker': 'Sara',
+            'bert_signals': [], 'people': [], 'dates': []}
+    item = proposal(unit).model_dump()
+    payload = {'message': {'content': json.dumps({'actions': [item]})}}
+    if invalid == 'quote':
+        item['quote'] = 'I will buy a yacht.'
+    elif invalid == 'source':
+        item['source_id'] = 99
+    elif invalid == 'schema':
+        item['kind'] = 'approved'
+    else:
+        payload['done_reason'] = 'length'
+    payload['message']['content'] = json.dumps({'actions': [item]})
+    class Client:
+        def __init__(self, **kwargs): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *args): pass
+        async def post(self, url, **kwargs):
+            assert kwargs['json']['format']['properties']['actions']
+            return httpx.Response(200, json=payload, request=httpx.Request('POST', url))
+    monkeypatch.setattr(c.httpx, 'AsyncClient', Client)
+    with pytest.raises(ValueError):
+        asyncio.run(c.propose([unit], 'http://127.0.0.1:11434', 'fixture'))
 
 
 def test_later_cancellation_crosses_batch_and_requires_review(nlp):
@@ -77,6 +112,14 @@ def test_later_cancellation_crosses_batch_and_requires_review(nlp):
     _, units = units_for('Sara: I will send the report.\nAli: Do not cancel the report.')
     result = c.ground([proposal(units[0])], units, nlp)
     assert result['actions'][0]['status'] == 'proposed'
+
+
+def test_cancellation_within_same_source_turn(nlp):
+    _, units = units_for('Sara: I will send the report. Actually, cancel the report.')
+    item = proposal(units[0], quote='I will send the report.')
+    action = c.ground([item], units, nlp)['actions'][0]
+    assert action['status'] == 'possible_cancellation'
+    assert action['evidence'][1]['quote'] == 'Actually, cancel the report.'
 
 
 def test_unsupported_task_invalid_quote_and_duplicate_proposals(nlp):
@@ -103,6 +146,13 @@ def test_multiple_dates_are_not_silently_resolved(nlp):
     action = c.ground([proposal(units[0], deadline='Friday')], units, nlp)['actions'][0]
     assert action['deadline'] is None
     assert 'multiple_date_expressions' in action['review_reasons']
+
+
+def test_plain_object_is_not_accepted_as_deadline(nlp):
+    _, units = units_for('Sara: I will send the report.')
+    action = c.ground([proposal(units[0], deadline='report')], units, nlp)['actions'][0]
+    assert action['deadline'] is None
+    assert 'unsupported_deadline_removed' in action['review_reasons']
 
 
 def test_api_success_and_failure_preserve_stored_meeting(tmp_path, monkeypatch, nlp):

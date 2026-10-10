@@ -9,8 +9,9 @@ Prerequisites: Node.js, uv, Python 3.13 (uv can provision it), FFmpeg on PATH, a
 Backend:
 ```powershell
 cd meetmind/backend
-uv sync --group dev
-uv run uvicorn app.main:app --host 127.0.0.1 --port 8000
+$env:UV_PROJECT_ENVIRONMENT='.venv-nlp'
+uv sync --extra nlp --group dev
+uv run --extra nlp uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
 Frontend:
@@ -51,7 +52,7 @@ Jobs are queued (one worker, three total admitted jobs), decoded, transcribed an
 
 All paths produce the same transcript segment fields: `id`, `speaker`, `text`, `source`, `start`, `end`, plus source lineage. New meetings preserve the original transcript and prepare sentence-sized utterances before analysis. See [transcript preparation](backend/PREPROCESSING.md) for report cleaning, token budgets, offsets and evidence. Meeting metadata includes source type, original filename and transcription model/duration where applicable. TXT/JSON/original-text exports are available for every meeting; VTT export requires positive timestamp ranges on all segments.
 
-SQLite persistence, meeting library/detail, health status and source-linked Ollama extraction remain available. Long transcripts are batched for extraction, preserving segment IDs; a single oversized utterance is rejected explicitly. Batching can miss context spanning batch boundaries. Extraction suggestions require review; source references are validated but semantic correctness is not guaranteed. Re-extraction replaces previous results. Owner/deadline editing, spaCy, calibrated confidence and commitment-specific annotation/evaluation remain pending. Separate AMI dialogue-act training and evaluation are documented in BERT.md. No external actions execute.
+SQLite persistence, meeting library/detail, health status and structured local extraction remain available. Extraction now combines BERT signals, spaCy owner/deadline evidence and Ollama proposals, with quoted sources and conservative cancellation checks. Suggestions, requests and cancellations are displayed separately. See [structured commitments](backend/COMMITMENTS.md) for setup, fields, tests and limitations. Results require review; source validation does not guarantee semantic correctness. Successful re-extraction replaces previous results. Owner/deadline editing, approval/rejection, calibrated confidence and commitment-specific annotation/evaluation remain pending. Separate AMI dialogue-act training and evaluation are documented in BERT.md. No external actions execute.
 
 Fine-tuned BERT is the primary dialogue-act classifier following the user's confirmed decision. Ollama remains the optional local commitment extractor and does not replace BERT. SQLite is a temporary local foundation; PostgreSQL remains the proposed relational target. No authentication or production deployment is included.
 

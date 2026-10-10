@@ -4,3 +4,5 @@
 .columns>.panel{min-width:0}.columns article,.columns blockquote,h1{overflow-wrap:anywhere}
 
 .preparation{margin:20px 0}.preparation pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:360px;overflow:auto}details summary{cursor:pointer;color:#8ebce8}details p{overflow-wrap:anywhere}
+
+.commitment-results blockquote{margin:14px 0;padding:10px 14px;border-left:2px solid #34505a}.commitment-result[data-status="possible_cancellation"]{border:1px solid #a97939;border-radius:10px;padding:14px}.action-candidates{margin-top:26px;border-top:1px solid #22314c}.commitment-results li{font-size:13px;line-height:1.8;overflow-wrap:anywhere}
