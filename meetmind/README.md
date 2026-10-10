@@ -28,6 +28,16 @@ Configuration: backend environment variables `OLLAMA_URL`, `OLLAMA_MODEL`, `MEET
 
 ## Current scope
 
+### Commitment review
+
+After extraction, choose **Review / edit** to correct task, owner and deadline,
+then save for review, approve or reject. Original evidence and a dated decision
+history remain available after refresh. Suggestions/requests need explicit
+approval to become commitments; cancellation evidence requires careful review.
+Reviewed meetings cannot be re-extracted in place: upload a new copy to preserve
+your decisions. See [backend/COMMITMENTS.md](backend/COMMITMENTS.md) for the API
+and review rules. Restart the backend and frontend after updating the code.
+
 ### Fine-tuned BERT (10 October update)
 
 The primary dialogue-act classifier now has official AMI dataset preparation,

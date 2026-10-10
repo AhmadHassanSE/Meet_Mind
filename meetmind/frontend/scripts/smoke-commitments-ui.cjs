@@ -55,6 +55,7 @@ const cases = [
       await page.reload();
       await page.getByRole('heading', { name: 'Meeting library', exact: true }).waitFor();
       await page.locator('.meeting').filter({ hasText: title }).click();
+      await page.locator(`[data-id="${task.id}"]`).waitFor();
       assert.equal(await page.locator('.commitment-result').count(), meeting.actions.length + meeting.action_candidates.length);
       assert.equal(await page.locator(`[data-id="${task.id}"]`).getAttribute('data-status'), 'approved');
       await page.setViewportSize({ width: 390, height: 844 });

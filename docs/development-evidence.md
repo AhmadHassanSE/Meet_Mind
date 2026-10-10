@@ -135,3 +135,22 @@ results, not a claimed independent local reproduction. See
 Implementation and validation were AI-assisted at the user's direction.
 Commits use the explicitly authorized team account; this does not assert
 that the named account holder manually authored the implementation.
+# Commitment review implemented: 10 October 2026
+
+Branch `feat/commitment-review` builds on the completed BERT-base comparison.
+Added editable task/owner/deadline fields, approval/rejection, candidate promotion
+and reopening, preserved originals/evidence, and dated before/after decision
+history. Reviews persist in SQLite; stale item revisions return 409. Reviewed
+meetings cannot be re-extracted in place, and in-flight classification/extraction
+does not overwrite review decisions. Cancellation proposals cannot be approved
+as tasks; a possible-cancellation action requires an approval note.
+
+74 backend tests passed, the frontend built, and Chrome passed both deterministic
+review checks and existing ingestion checks. Two real local NLP browser cases
+also extracted and approved commitments, preserved evidence, and verified saved
+approvals after refresh. CI includes the deterministic review browser suite.
+Compact evidence is in `meetmind/backend/reports/commitment-review-2026-10-10/`.
+These are functional checks, not an extraction accuracy benchmark. Reviewer
+identity remains unauthenticated in this local workspace. Implementation and
+validation were AI-assisted at the user's direction; the authorized account is
+used for checkpoint commits without claiming manual authorship by its owner.
