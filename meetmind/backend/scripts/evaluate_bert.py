@@ -58,6 +58,8 @@ def main():
               'bert': classification_metrics(gold, [p['predicted'] for p in predictions], labels)}
     result = {'split': args.split, 'checkpoint': str(args.checkpoint),
               'checkpoint_stage': classifier.metadata['checkpoint_stage'],
+              'model_name': classifier.metadata['model_name'], 'model_revision': classifier.metadata['model_revision'],
+              'max_length': classifier.metadata['max_length'],
               'dataset_manifest_sha256': manifest_hash, 'model_weights_sha256': sha256(args.checkpoint / 'model.safetensors'),
               'train_examples': len(train), 'selection_metric': 'validation macro F1 only',
               'scores': scores, 'predictions': predictions,

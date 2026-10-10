@@ -13,6 +13,11 @@ def select(runs, output):
         run = Path(run)
         checkpoint = run / 'best'
         metadata = json.loads((checkpoint / 'meetmind_model.json').read_text(encoding='utf-8'))
+        if metadata.get('checkpoint_stage') == 'smoke-test':
+            raise ValueError('A smoke-test is not a trained selection candidate')
+        status = run / 'status.json'
+        if status.exists() and json.loads(status.read_text(encoding='utf-8'))['status'] != 'completed':
+            raise ValueError('Candidate training is not complete')
         if metadata.get('test_used_for_selection') is not False:
             raise ValueError('Candidate must declare validation-only selection')
         if not (checkpoint / 'model.safetensors').is_file():

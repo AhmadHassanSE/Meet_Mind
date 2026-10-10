@@ -1,0 +1,23 @@
+{
+  "model": "google-bert/bert-base-uncased",
+  "revision": "86b5e0934494bd15c9632b12f734a8a67f723594",
+  "data": "data/ami-da-v1",
+  "output": "runs/bert-base-gpu-lr2e5",
+  "stage": "full-training-candidate",
+  "seed": 42,
+  "max_length": 128,
+  "batch_size": 8,
+  "eval_batch_size": 32,
+  "gradient_accumulation_steps": 4,
+  "epochs": 5,
+  "learning_rate": 2e-05,
+  "weight_decay": 0.01,
+  "class_weighting": "sqrt_inverse",
+  "patience": 2,
+  "cpu_threads": 4,
+  "max_train_examples": 0,
+  "device": "cuda",
+  "precision": "fp16",
+  "gradient_checkpointing": true,
+  "save_epoch_state": true
+}
