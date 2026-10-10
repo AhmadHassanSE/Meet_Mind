@@ -11,6 +11,7 @@ env/
 node_modules/
 dist/
 build/
+release/
 *.log
 
 # Local data and datasets

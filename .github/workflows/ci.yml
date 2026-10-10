@@ -1,0 +1,135 @@
+name: MeetMind CI and delivery
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: meetmind-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend tests (Python 3.13)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: meetmind/backend
+    env:
+      MEETMIND_DB: ${{ runner.temp }}/backend-tests.db
+      BERT_MODEL_PATH: ${{ runner.temp }}/no-private-checkpoint
+      HF_HUB_OFFLINE: '1'
+      TRANSFORMERS_OFFLINE: '1'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7
+        with:
+          version: '0.10.9'
+          python-version: '3.13'
+          enable-cache: true
+          cache-dependency-glob: meetmind/backend/uv.lock
+      - name: Install locked backend and NLP dependencies
+        run: uv sync --frozen --extra nlp --group dev
+      - name: Verify NLP components are available
+        run: uv run --frozen --no-sync python -c "import torch, transformers; from app.commitments import load_nlp; load_nlp(); print('NLP dependencies ready')"
+      - name: Run backend tests
+        run: uv run --frozen --no-sync python -m pytest -q --junitxml=test-results.xml
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: backend-test-results
+          path: meetmind/backend/test-results.xml
+          if-no-files-found: warn
+          retention-days: 14
+
+  frontend:
+    name: Frontend build and browser smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: meetmind/frontend
+    env:
+      MEETMIND_DB: ${{ runner.temp }}/browser-tests.db
+      MEETMIND_BACKEND_URL: http://127.0.0.1:8016
+      MEETMIND_UI_URL: http://127.0.0.1:5186
+      HF_HUB_OFFLINE: '1'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: meetmind/frontend/package-lock.json
+      - uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7
+        with:
+          version: '0.10.9'
+          python-version: '3.13'
+          enable-cache: true
+          cache-dependency-glob: meetmind/backend/uv.lock
+      - run: npm ci
+      - run: npm run build
+      - name: Install smoke dependencies
+        run: |
+          npx playwright install --with-deps chrome
+          uv sync --project ../backend --frozen
+      - name: Run actual upload browser checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run --directory ../backend --frozen --no-sync uvicorn app.main:app --host 127.0.0.1 --port 8016 > backend.log 2>&1 &
+          backend_pid=$!
+          npm run dev -- --port 5186 --strictPort > frontend.log 2>&1 &
+          frontend_pid=$!
+          trap 'kill "$backend_pid" "$frontend_pid" 2>/dev/null || true' EXIT
+          ready=false
+          for attempt in {1..60}; do
+            if curl --fail --silent http://127.0.0.1:8016/api/meetings >/dev/null && curl --fail --silent http://127.0.0.1:5186 >/dev/null; then
+              ready=true
+              break
+            fi
+            sleep 1
+          done
+          if [ "$ready" != true ]; then cat backend.log frontend.log; exit 1; fi
+          node scripts/smoke-ui.cjs
+      - name: Upload diagnostic logs
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: browser-logs
+          path: meetmind/frontend/*.log
+          retention-days: 7
+      - name: Upload tested frontend build
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: frontend-dist
+          path: meetmind/frontend/dist/
+          if-no-files-found: error
+          retention-days: 14
+
+  delivery:
+    name: Release bundle
+    needs: [backend, frontend]
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: frontend-dist
+          path: meetmind/frontend/dist
+      - name: Package tracked application and tested build
+        run: python3 scripts/build_release.py --output release/meetmind.zip
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: meetmind-release-${{ github.sha }}
+          path: release/
+          if-no-files-found: error
+          retention-days: 30

@@ -4,6 +4,8 @@ The active fresh implementation is in [`meetmind/`](meetmind/README.md): React/T
 
 The root-level UI and Python files are the earlier reference prototype, retained for context. Use the setup instructions inside `meetmind/`, not the root npm scripts, to run the new application.
 
-Current development branch: `mid1/ollama-foundation`. This is an Iteration 1 foundation, not a completed NLP research milestone. BERT fine-tuning, AMI evaluation, spaCy and calibrated confidence are not implemented.
+The latest application includes ingestion, a fine-tuned BERT pilot and spaCy-assisted local commitment extraction. Trained weights and datasets are supplied separately; confidence calibration and held-out extraction evaluation remain pending.
+
+GitHub Actions runs backend tests, the frontend build and browser smoke checks. Successful push/manual runs produce a downloadable release bundle; see [CI/CD setup](docs/ci-cd.md).
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the team workflow and [development evidence](docs/development-evidence.md) for actual completed checks and limitations.
