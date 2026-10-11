@@ -21,6 +21,7 @@ recordings/
 *.mp3
 *.m4a
 *.flac
+runsScreenshots/
 
 # OS/editor
 .DS_Store
