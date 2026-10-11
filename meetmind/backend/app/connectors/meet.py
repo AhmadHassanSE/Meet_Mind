@@ -19,6 +19,7 @@ from .alignment import build_intervals, label_from_intervals, name_clusters, nor
 
 LAG_SECONDS = float(os.getenv("MEETMIND_MEET_LAG_MS", "500")) / 1000
 MIN_CONFIDENCE = float(os.getenv("MEETMIND_MEET_MIN_CONFIDENCE", "0.4"))
+FALLBACK_UNATTRIBUTED = float(os.getenv("MEETMIND_MEET_FALLBACK_UNATTRIBUTED", "0.3"))
 MAX_CHUNK_BYTES = 10 * 1024 * 1024
 MAX_HINT_BYTES = 5 * 1024 * 1024
 MAX_EVENTS_PER_REQUEST = 2000
@@ -133,13 +134,18 @@ def build_router(save, update_job, submit_job):
     def label(session, segments, events, duration, update):
         """Return ``(labelled segments, speaker_labels, diarization, note)``.
 
-        pyannote separates the voices; caption hints only name them. Without
-        pyannote (or if it fails) the hints label segments directly.
+        Caption hints (who Meet shows as speaking) label segments directly. pyannote
+        is a fallback, used only when hints leave too much unattributed (or there
+        are none); set MEETMIND_DIARIZATION=always to run it on every meeting.
         """
         hinted = build_intervals(events, LAG_SECONDS, duration)
+        direct = label_from_intervals(segments, hinted, MIN_CONFIDENCE)
+        covered = bool(events) and sum(1 for s in direct if not s["speaker"]) <= FALLBACK_UNATTRIBUTED * len(direct)
         if not diarize.enabled():
             note = None
             state = "off"
+        elif covered and not diarize.always():
+            return direct, "dom_hints", "not_needed", None
         else:
             try:
                 turns = diarize.diarize(session["dir"] / "decoded.wav", update)

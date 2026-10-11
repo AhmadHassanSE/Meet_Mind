@@ -25,6 +25,10 @@ def enabled():
     return MODE != "off"
 
 
+def always():
+    return MODE == "always"
+
+
 def hf_token():
     token = os.getenv("HF_TOKEN") or os.getenv("HUGGINGFACE_TOKEN")
     if token:
