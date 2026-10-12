@@ -11,7 +11,7 @@ from .ingestion import clean, timestamp, IngestionError
 
 VERSION = '1.0'
 TIME = re.compile(r'\[(\d{1,2}:\d{2}(?::\d{2})?(?:[.,]\d+)?)\s*-\s*(\d{1,2}:\d{2}(?::\d{2})?(?:[.,]\d+)?)\]\s*')
-SPEAKER = re.compile(r'^((?:[A-Z][\w\'-]*)(?:[ \t]+[A-Z][\w\'-]*){0,4}):[ \t]*(?!//)')
+SPEAKER = re.compile(r"^([^:\r\n]{1,60}):[ \t]*(?!//)")
 ABBREVIATIONS = {'mr', 'mrs', 'ms', 'dr', 'prof', 'sr', 'jr', 'vs', 'etc', 'e.g', 'i.e', 'a.m', 'p.m'}
 
 
@@ -104,7 +104,7 @@ def token_policy():
 
 def sentence_ranges(text):
     start = 0
-    for match in re.finditer(r'[.!?]+["\')\]]*(?=\s|$)', text):
+    for match in re.finditer(r'[.!?۔؟]+["\')\]]*(?=\s|$)', text):
         prefix = text[max(0, match.start() - 100):match.start()]
         word = re.search(r'([\w.]+)$', prefix)
         if match[0].startswith('.') and word:

@@ -1,6 +1,7 @@
 type Preparation = { source_count: number; utterance_count: number; duplicate_section_removed: boolean; warnings: string[] };
 export type PreparedMeeting = {
   id: string;
+  language_profile?: { label: string };
   original_transcript?: string;
   preprocessing?: Preparation;
   source_segments?: { id: number; text: string }[];
@@ -13,7 +14,7 @@ export function PreparedTranscript({ meeting }: { meeting: PreparedMeeting }) {
       {p.duplicate_section_removed && ' Matching duplicate report section removed.'}</p>
     {p.warnings.map(warning => <p className="mint" key={warning}>{warning}</p>)}
     <p className="muted">Split utterances retain their source speaker and time range. Times refer to the complete source turn.</p>
-    <details><summary>Original transcript</summary><pre>{meeting.original_transcript}</pre>
+    <details><summary>Original transcript</summary><pre dir="auto">{meeting.original_transcript}</pre>
       <a href={`/api/meetings/${meeting.id}/transcript?format=original`}>Download original text</a></details>
   </section>;
 }

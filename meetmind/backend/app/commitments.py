@@ -9,6 +9,7 @@ from typing import Literal
 
 import httpx
 from pydantic import BaseModel, ConfigDict, Field
+from . import languages, urdu
 
 VERSION = '1.0'
 SPACY_MODEL = os.getenv('SPACY_MODEL', 'en_core_web_sm')
@@ -98,6 +99,7 @@ def source_units(meeting, predictions):
                 raise InvalidExtraction('A source turn exceeds 6,000 characters. Re-upload it to prepare shorter utterances.')
             units.append({'source_id': partition[0]['id'], 'text': text,
                           'speaker': partition[0].get('speaker'), 'children': partition,
+                          'language': (meeting.get('input_language') if meeting.get('input_language') in {'en','ur','roman-ur'} else languages.detect(text)),
                           'parent_id': group['parent_id'], 'parent_text': parent['text'] if parent else None,
                           'parent_offset': partition[0].get('source_start', 0) if len(partitions) > 1 else 0,
                           'bert_signals': [{'source_id': s['id'], 'label': signals[s['id']]['label'],
@@ -121,6 +123,10 @@ def annotate(units):
                     selected.append((a, b, method))
             unit['dates'] = [{'text': unit['text'][a:b], 'start': a, 'end': b, 'method': method}
                              for a, b, method in sorted(selected)]
+            if unit.get('language','en') != 'en':
+                unit['doc'] = urdu.nlp()(unit['text'])
+                unit['people'] = []  # English NER is not evidence for Urdu names.
+                unit['dates'] = urdu.dates(unit['text'])
     return nlp
 
 
@@ -153,6 +159,10 @@ Do not turn discussion, past events, possibilities, or BERT labels into commitme
 Copy deadline wording verbatim, never invent calendar dates. First-person promise owner is the provided speaker, never an invented name.
 Keep requests/suggestions separate even when BERT predicts offer. Capture explicit cancellations for reconciliation.
 Include the full supporting clause in quote, including negations. Do not create tasks for generic 'yes' or infer its referent.
+Input may be English, Urdu script, Roman Urdu or mixed. Preserve the source language/script in task and quote.
+Never translate a quote or deadline. For Urdu/Roman Urdu, copy task content words from the original source.
+'Main report kal bhej dunga' and 'میں رپورٹ کل بھیج دوں گا' are promises, not completed work.
+'Report mat bhejna' and 'رپورٹ مت بھیجنا' are cancellations. 'Shayad' / 'شاید' express uncertainty.
 Multiple different tasks can reference one turn, each with its own supporting quote. Return actions [] if none exist.
 Examples: 'I will send the report by Friday.' = commitment; 'Could we redesign it?' = suggestion;
 'Ali, can you book the room?' = request; 'Do not send the report.' = cancellation. No actions are executed."""
@@ -181,12 +191,16 @@ async def propose(units, url, model):
 
 
 def words(doc):
+    if not doc.has_annotation('POS'):
+        return urdu.terms(doc.text)
     return {t.lemma_.lower() for t in doc if t.pos_ in {'VERB', 'NOUN', 'PROPN'} and not t.is_stop}
 
 
 def polarity(doc):
     """Conservative flags, not a general-purpose semantic negation resolver."""
     text = doc.text.lower().replace('’', "'")
+    if not getattr(doc, 'doc', doc).has_annotation('DEP'):
+        return bool(urdu.CANCEL.search(text)), bool(urdu.NEGATIVE.search(text))
     cancelled = bool(re.search(r'\b(?:cancel(?:led|ed)?|withdraw(?:n)?|scrap|never\s+mind|no\s+longer)\b', text))
     negative = any(t.dep_ == 'neg' for t in doc) or bool(re.search(r"\b(?:not|never|won't|cannot|can't|don't|do not)\b", text))
     # "do not cancel" is negated cancellation, not an instruction to cancel.
@@ -251,15 +265,22 @@ def ground(proposals, units, nlp):
         if key in seen:
             continue
         seen.add(key)
+        multilingual = unit.get('language','en') != 'en'
         with _nlp_lock:
-            doc = nlp(proposal.quote)
-            task_doc = nlp(proposal.task)
+            parser = urdu.nlp() if multilingual else nlp
+            doc = parser(proposal.quote)
+            task_doc = parser(proposal.task)
         reasons = ['human_review_required']
+        if multilingual:
+            reasons.append('urdu_roman_rules_not_validated')
         if unit['text'].count(proposal.quote) > 1:
             reasons.append('repeated_quote_position_ambiguous')
         kind = proposal.kind
         cancelled, negative = polarity(doc)
-        if cancelled or negative:
+        if multilingual:
+            kind, language_reasons = urdu.kind(proposal.quote,kind)
+            reasons.extend(language_reasons)
+        elif cancelled or negative:
             kind = 'cancellation'
             reasons.append('negated_or_cancelled_source')
         elif kind == 'commitment' and (proposal.quote.rstrip().endswith('?') or
@@ -274,7 +295,7 @@ def ground(proposals, units, nlp):
         if not task_words or not task_words.intersection(source_words):
             discarded.append({'task': proposal.task, 'source_id': proposal.source_id, 'reason': 'task_has_no_lexical_support'})
             continue
-        owner, owner_method, owner_reasons = resolve_owner(proposal, unit, doc, task_doc)
+        owner, owner_method, owner_reasons = urdu.owner(proposal,unit) if multilingual else resolve_owner(proposal, unit, doc, task_doc)
         reasons.extend(owner_reasons)
         dates = [d for d in unit['dates'] if d['text'] in proposal.quote]
         deadline = proposal.deadline.strip() if proposal.deadline else None
@@ -297,7 +318,7 @@ def ground(proposals, units, nlp):
                 'kind': kind, 'status': 'proposed' if kind == 'commitment' else kind,
                 'needs_review': True, 'review_reasons': reasons,
                 'owner_method': owner_method, 'deadline_candidates': dates,
-                'bert_signals': unit['bert_signals'], '_nouns': {t.lemma_.lower() for t in doc if t.pos_ in {'NOUN', 'PROPN'} and not t.is_stop},
+                'bert_signals': unit['bert_signals'], '_nouns': words(doc) if multilingual else {t.lemma_.lower() for t in doc if t.pos_ in {'NOUN', 'PROPN'} and not t.is_stop},
                 '_unit_position': units.index(unit), '_quote_end': unit['text'].index(proposal.quote) + len(proposal.quote)}
         (actions if kind == 'commitment' else candidates).append(item)
     # Inspect all later turns, including turns the LLM omitted. Object overlap
@@ -311,7 +332,7 @@ def ground(proposals, units, nlp):
                 if index == position and sentence.start_char < action['_quote_end']:
                     continue
                 cancel, negative = polarity(sentence)
-                later_nouns = {t.lemma_.lower() for t in sentence if t.pos_ in {'NOUN', 'PROPN'} and not t.is_stop}
+                later_nouns = words(sentence.as_doc()) if later.get('language','en')!='en' else {t.lemma_.lower() for t in sentence if t.pos_ in {'NOUN', 'PROPN'} and not t.is_stop}
                 pronoun_cancel = re.search(r'\b(?:cancel|scrap)\s+(?:it|that)\b|\bnever mind\b', sentence.text, re.I)
                 if (cancel or negative) and (nouns.intersection(later_nouns) or (pronoun_cancel and index <= position + 1)):
                     relevant.append(evidence(later, sentence.text, sentence.start_char))

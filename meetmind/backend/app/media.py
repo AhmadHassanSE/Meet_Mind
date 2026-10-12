@@ -12,7 +12,7 @@ AUDIO_FORMATS = {".wav", ".mp3", ".m4a", ".ogg", ".flac", ".aac"}
 VIDEO_FORMATS = {".mp4", ".webm", ".mov", ".mkv"}
 MAX_MEDIA_BYTES = 200 * 1024 * 1024
 MAX_DURATION = 2 * 60 * 60
-MODEL_NAME = os.getenv("WHISPER_MODEL", "base.en")
+MODEL_NAME = os.getenv("WHISPER_MODEL", "base")
 _model = None
 _lock = threading.Lock()
 
@@ -21,7 +21,12 @@ def ffmpeg_path():
     return shutil.which(os.getenv("FFMPEG_PATH", "ffmpeg"))
 
 
-def transcribe_media(path: Path, update):
+def transcribe_media(path: Path, update, language='auto'):
+    if language not in {'auto','en','ur','roman-ur','mixed'}:
+        raise IngestionError('Choose English, Urdu, Roman Urdu, mixed, or auto.')
+    speech_language = 'ur' if language in {'ur','roman-ur'} else 'en' if language=='en' else None
+    if MODEL_NAME.endswith('.en') and speech_language != 'en':
+        raise IngestionError('This speech model is English-only. Set WHISPER_MODEL=base (or small) for Urdu/mixed audio, or select English.')
     ffmpeg = ffmpeg_path()
     if not ffmpeg:
         raise IngestionError("FFmpeg is missing. Install FFmpeg or configure FFMPEG_PATH, then retry.")
@@ -55,7 +60,7 @@ def transcribe_media(path: Path, update):
         import numpy as np
         with wave.open(str(wav), "rb") as audio:
             samples = np.frombuffer(audio.readframes(audio.getnframes()), dtype="<i2").astype(np.float32) / 32768.0
-        stream, info = _model.transcribe(samples, language="en", beam_size=5,
+        stream, info = _model.transcribe(samples, language=speech_language, task='transcribe', beam_size=5,
             vad_filter=True, condition_on_previous_text=False)
         segments = []
         characters = 0

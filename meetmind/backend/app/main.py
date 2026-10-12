@@ -21,11 +21,12 @@ from pydantic import BaseModel, Field
 from .ingestion import IngestionError, parse_text, parse_transcript, docx_text, MAX_TEXT_BYTES
 from .preprocessing import prepare
 from .media import AUDIO_FORMATS, VIDEO_FORMATS, MAX_MEDIA_BYTES, MODEL_NAME, ffmpeg_path, transcribe_media
-from . import bert, commitments, review
+from . import bert, commitments, review, languages
 
 DB_PATH = Path(os.getenv("MEETMIND_DB", str(Path(__file__).parents[1] / "meetmind.db")))
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2:latest")
+MULTILINGUAL_MODEL = os.getenv('OLLAMA_MULTILINGUAL_MODEL', OLLAMA_MODEL)
 executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="meetmind-transcription")
 slots = threading.BoundedSemaphore(3)
 
@@ -54,6 +55,7 @@ def connect():
 
 
 class MeetingInput(BaseModel):
+    input_language: languages.Language = 'auto'
     title: str = Field(min_length=1, max_length=200)
     transcript: str = Field(min_length=1, max_length=500_000)
 
@@ -106,7 +108,9 @@ def review_commitment(meeting_id: str, item_id: str, data: review.ReviewInput):
 
 @app.get("/api/health")
 async def health():
-    ingestion = {"ffmpeg": bool(ffmpeg_path()), "speech_model": MODEL_NAME, "bert": bert.status(), 'spacy': commitments.status()}
+    ingestion = {"ffmpeg": bool(ffmpeg_path()), "speech_model": MODEL_NAME, "bert": bert.status(), 'spacy': commitments.status(),
+                 'languages': {'supported': ['en','ur','roman-ur','mixed'], 'multilingual_model': MULTILINGUAL_MODEL,
+                               'speech_multilingual': not MODEL_NAME.endswith('.en'), 'urdu_accuracy_validated': False}}
     try:
         async with httpx.AsyncClient(timeout=3) as client:
             response = await client.get(f"{OLLAMA_URL}/api/tags")
@@ -137,13 +141,14 @@ def create_meeting(data: MeetingInput):
         raise HTTPException(422, "No transcript utterances found")
     meeting = {"id": str(uuid4()), "title": data.title.strip(), "transcript": data.transcript,
                "segments": segments, "actions": [], "status": "uploaded", "model": None,
-               "source_type": "text", "filename": None, **prepared}
+               "source_type": "text", "filename": None, **prepared,
+               'input_language': data.input_language, 'language_profile': languages.profile(segments, data.input_language)}
     save(meeting)
     return meeting
 
 
 @app.post("/api/ingestion/transcript", status_code=201)
-async def upload_transcript(title: str = Form(..., min_length=1, max_length=200), file: UploadFile = File(...)):
+async def upload_transcript(title: str = Form(..., min_length=1, max_length=200), file: UploadFile = File(...), input_language: languages.Language = Form('auto')):
     try:
         if not title.strip():
             raise IngestionError("Meeting title cannot be blank")
@@ -155,7 +160,8 @@ async def upload_transcript(title: str = Form(..., min_length=1, max_length=200)
         meeting = {"id": str(uuid4()), "title": title.strip(),
                    "transcript": "\n".join(item["source"] for item in segments),
                    "segments": segments, "actions": [], "status": "uploaded", "model": None,
-                   "source_type": suffix.lstrip("."), "filename": Path(file.filename or "").name, **prepared}
+                   "source_type": suffix.lstrip("."), "filename": Path(file.filename or "").name, **prepared,
+                   'input_language': input_language, 'language_profile': languages.profile(prepared['segments'], input_language)}
         save(meeting)
         return meeting
     except IngestionError as error:
@@ -170,15 +176,17 @@ def update_job(job_id, status, progress, message, meeting_id=None):
                            (job_id, status, progress, message, meeting_id))
 
 
-def run_media_job(job_id, title, filename, path):
+def run_media_job(job_id, title, filename, path, input_language='auto'):
     try:
-        segments, metadata = transcribe_media(path, lambda status, progress, message: update_job(job_id, status, progress, message))
+        update = lambda status, progress, message: update_job(job_id, status, progress, message)
+        segments, metadata = transcribe_media(path, update) if input_language=='auto' else transcribe_media(path, update, language=input_language)
         prepared = prepare('\n'.join(s['source'] for s in segments), segments)
         update_job(job_id, "saving", 96, "Saving transcript and evidence segments")
         meeting = {"id": str(uuid4()), "title": title, "transcript": "\n".join(s["source"] for s in segments),
                    "segments": segments, "actions": [], "status": "uploaded", "model": None,
                    "source_type": "video" if path.suffix in VIDEO_FORMATS else "audio",
-                   "filename": filename, **metadata, **prepared}
+                   "filename": filename, **metadata, **prepared, 'input_language': input_language,
+                   'language_profile': languages.profile(prepared['segments'], input_language)}
         save(meeting)
         update_job(job_id, "completed", 100, "Transcript ready", meeting["id"])
     except IngestionError as error:
@@ -194,7 +202,7 @@ def run_media_job(job_id, title, filename, path):
 
 
 @app.post("/api/ingestion/media", status_code=202)
-async def upload_media(title: str = Form(..., min_length=1, max_length=200), file: UploadFile = File(...)):
+async def upload_media(title: str = Form(..., min_length=1, max_length=200), file: UploadFile = File(...), input_language: languages.Language = Form('auto')):
     directory = None
     acquired = False
     submitted = False
@@ -222,7 +230,7 @@ async def upload_media(title: str = Form(..., min_length=1, max_length=200), fil
             raise HTTPException(422, "Recording is empty")
         job_id = str(uuid4())
         update_job(job_id, "queued", 0, "Waiting for local transcription")
-        executor.submit(run_media_job, job_id, title.strip(), Path(file.filename or "recording").name, path)
+        executor.submit(run_media_job, job_id, title.strip(), Path(file.filename or "recording").name, path, input_language)
         submitted = True
         return {"id": job_id, "status": "queued", "progress": 0, "message": "Waiting for local transcription", "meeting_id": None}
     finally:
@@ -294,12 +302,16 @@ def extraction_batches(segments):
 
 
 @app.post("/api/meetings/{meeting_id}/classify")
-def classify_dialogue(meeting_id: str):
+async def classify_dialogue(meeting_id: str):
     meeting = get_meeting(meeting_id)
     try:
-        result = bert.classify(meeting["segments"])
+        result = await languages.classify(meeting, bert.classify, OLLAMA_URL, MULTILINGUAL_MODEL)
     except bert.BertUnavailable as error:
         raise HTTPException(503, str(error)) from error
+    except httpx.HTTPError as error:
+        raise HTTPException(503, 'Local translation failed. Check Ollama and OLLAMA_MULTILINGUAL_MODEL.') from error
+    except (ValueError, KeyError, TypeError) as error:
+        raise HTTPException(502, 'Invalid local translation; stored analysis was preserved. Retry or select the correct input language.') from error
     # Separate from commitments: suggest/offer labels are not approved tasks.
     # Merge only analysis into the current payload, preserving concurrent reviews.
     with connect() as connection:
@@ -319,10 +331,11 @@ async def extract(meeting_id: str):
     previous_revision = meeting.get('commitment_revision', 0)
     try:
         # Work on a detached payload: failures preserve previously saved results.
-        analysis = await run_in_threadpool(bert.classify, meeting['segments'])
+        analysis = await languages.classify(meeting, bert.classify, OLLAMA_URL, MULTILINGUAL_MODEL)
         units = commitments.source_units(meeting, analysis['predictions'])
         nlp = await run_in_threadpool(commitments.annotate, units)
-        proposals = await commitments.propose(units, OLLAMA_URL, OLLAMA_MODEL)
+        extraction_model = MULTILINGUAL_MODEL if languages.needs_translation(meeting) else OLLAMA_MODEL
+        proposals = await commitments.propose(units, OLLAMA_URL, extraction_model)
         result = await run_in_threadpool(commitments.ground, proposals, units, nlp)
     except (bert.BertUnavailable, commitments.NLPUnavailable) as error:
         raise HTTPException(503, str(error)) from error
@@ -331,7 +344,7 @@ async def extract(meeting_id: str):
     except (ValueError, KeyError, TypeError) as error:
         raise HTTPException(502, "Model output was invalid; stored meeting was preserved. Retry extraction.") from error
     meeting.update(result, dialogue_analysis=analysis)
-    meeting.update(status="extracted", model=OLLAMA_MODEL)
+    meeting.update(status="extracted", model=extraction_model)
     review.initialize(meeting)
     meeting['commitment_revision'] = previous_revision + 1
     with connect() as connection:

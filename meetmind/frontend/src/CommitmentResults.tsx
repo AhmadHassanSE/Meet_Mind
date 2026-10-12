@@ -37,18 +37,18 @@ function Result({ item, meeting, onReview, disabled }: { item: Commitment; meeti
   }
   return <article className="commitment-result" data-id={item.id} data-status={item.status || 'proposed'}>
     <span className={`pill${reviewed ? '' : ' warning'}`}>{reviewed ? item.review_status : cancellation ? 'Possible cancellation' : item.kind && item.kind !== 'commitment' ? item.kind : 'Needs review'}</span>
-    <h3>{item.task}</h3><p className="muted">Owner: {item.owner || 'Unresolved'} · Due: {item.deadline || 'Unresolved'}</p>
-    {item.evidence?.length ? item.evidence.map((e, i) => <blockquote key={i}><small className="mint">{e.source_ids.map(id => `#${id}`).join(', ')}{e.speaker ? ` · ${e.speaker}` : ''}{e.start != null ? ` · ${e.start.toFixed(1)}s–${e.end?.toFixed(1)}s` : ''}</small><p>{e.quote}</p></blockquote>) : <blockquote>{meeting.segments.find(s => s.id === item.source_id)?.source}</blockquote>}
+    <h3 dir="auto">{item.task}</h3><p className="muted">Owner: {item.owner || 'Unresolved'} · Due: {item.deadline || 'Unresolved'}</p>
+    {item.evidence?.length ? item.evidence.map((e, i) => <blockquote key={i}><small className="mint">{e.source_ids.map(id => `#${id}`).join(', ')}{e.speaker ? ` · ${e.speaker}` : ''}{e.start != null ? ` · ${e.start.toFixed(1)}s–${e.end?.toFixed(1)}s` : ''}</small><p dir="auto">{e.quote}</p></blockquote>) : <blockquote>{meeting.segments.find(s => s.id === item.source_id)?.source}</blockquote>}
     {!!item.review_reasons?.length && <details><summary>Review details</summary><ul>{item.review_reasons.map(reason => <li key={reason}>{reason.replaceAll('_', ' ')}</li>)}</ul></details>}
     {!!item.review_history?.length && <details className="review-history"><summary>Review history ({item.review_history.length})</summary>
       <p className="muted">Original extraction: {item.original?.task} · {item.original?.owner || 'Unresolved'} · {item.original?.deadline || 'Unresolved'}</p>
       {item.review_history.map(event => <p key={event.revision}><strong>{event.decision}</strong> · {new Date(event.at).toLocaleString()}{event.note && <> · {event.note}</>}</p>)}
     </details>}
     {editing ? <form className="review-form" onSubmit={e => { e.preventDefault(); void submit('pending'); }}>
-      <label>Task<textarea aria-label="Task" required maxLength={1000} value={task} onChange={e => setTask(e.target.value)}/></label>
-      <label>Owner<input aria-label="Owner" maxLength={200} value={owner} onChange={e => setOwner(e.target.value)} placeholder="Unresolved"/></label>
-      <label>Deadline<input aria-label="Deadline" maxLength={200} value={deadline} onChange={e => setDeadline(e.target.value)} placeholder="Unresolved"/></label>
-      <label>Review note<textarea aria-label="Review note" maxLength={2000} value={note} onChange={e => setNote(e.target.value)}/></label>
+      <label>Task<textarea dir="auto" aria-label="Task" required maxLength={1000} value={task} onChange={e => setTask(e.target.value)}/></label>
+      <label>Owner<input dir="auto" aria-label="Owner" maxLength={200} value={owner} onChange={e => setOwner(e.target.value)} placeholder="Unresolved"/></label>
+      <label>Deadline<input dir="auto" aria-label="Deadline" maxLength={200} value={deadline} onChange={e => setDeadline(e.target.value)} placeholder="Unresolved"/></label>
+      <label>Review note<textarea dir="auto" aria-label="Review note" maxLength={2000} value={note} onChange={e => setNote(e.target.value)}/></label>
       <p className="muted">Corrections are your input; the original extraction and source evidence are retained. Approval does not execute the task.</p>
       {cancellation && <p className="mint">Check the cancellation evidence. Add a note explaining your decision before approving.</p>}
       <div className="review-controls">
