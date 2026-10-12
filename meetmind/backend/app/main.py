@@ -26,7 +26,7 @@ from . import bert, commitments, review, languages
 DB_PATH = Path(os.getenv("MEETMIND_DB", str(Path(__file__).parents[1] / "meetmind.db")))
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2:latest")
-MULTILINGUAL_MODEL = os.getenv('OLLAMA_MULTILINGUAL_MODEL', OLLAMA_MODEL)
+MULTILINGUAL_MODEL = os.getenv('OLLAMA_MULTILINGUAL_MODEL', 'qwen3:4b')
 executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="meetmind-transcription")
 slots = threading.BoundedSemaphore(3)
 
@@ -116,8 +116,10 @@ async def health():
             response = await client.get(f"{OLLAMA_URL}/api/tags")
             response.raise_for_status()
         names = [model["name"] for model in response.json().get("models", [])]
+        ingestion['languages']['model_status'] = 'ready' if MULTILINGUAL_MODEL in names else 'model missing'
         return {"ollama": "ready" if OLLAMA_MODEL in names else "model missing", "model": OLLAMA_MODEL, **ingestion}
     except (httpx.HTTPError, ValueError):
+        ingestion['languages']['model_status'] = 'offline'
         return {"ollama": "offline", "model": OLLAMA_MODEL, **ingestion}
 
 

@@ -11,7 +11,7 @@ import httpx
 from pydantic import BaseModel, ConfigDict, Field
 from . import languages, urdu
 
-VERSION = '1.0'
+VERSION = '1.1'
 SPACY_MODEL = os.getenv('SPACY_MODEL', 'en_core_web_sm')
 _nlp_lock = threading.Lock()
 
@@ -161,6 +161,9 @@ Keep requests/suggestions separate even when BERT predicts offer. Capture explic
 Include the full supporting clause in quote, including negations. Do not create tasks for generic 'yes' or infer its referent.
 Input may be English, Urdu script, Roman Urdu or mixed. Preserve the source language/script in task and quote.
 Never translate a quote or deadline. For Urdu/Roman Urdu, copy task content words from the original source.
+For multilingual turns, copy the ENTIRE supplied text verbatim as quote to avoid changing Urdu spelling.
+Example input source_id 1, speaker علی, text 'میں رپورٹ کل بھیج دوں گا۔':
+{"actions":[{"task":"رپورٹ بھیج","owner":"علی","deadline":"کل","source_id":1,"quote":"میں رپورٹ کل بھیج دوں گا۔","kind":"commitment"}]}
 'Main report kal bhej dunga' and 'میں رپورٹ کل بھیج دوں گا' are promises, not completed work.
 'Report mat bhejna' and 'رپورٹ مت بھیجنا' are cancellations. 'Shayad' / 'شاید' express uncertainty.
 Multiple different tasks can reference one turn, each with its own supporting quote. Return actions [] if none exist.
@@ -174,6 +177,7 @@ async def propose(units, url, model):
         for batch in batches(units):
             response = await client.post(f'{url}/api/chat', json={
                 'model': model, 'stream': False, 'format': Proposals.model_json_schema(),
+                **({'think':False} if 'qwen3' in model.lower() else {}),
                 'options': {'temperature': 0, 'num_ctx': 8192, 'num_predict': 3000},
                 'messages': [{'role': 'system', 'content': SYSTEM},
                              {'role': 'user', 'content': json.dumps(batch, ensure_ascii=False)}]})
@@ -292,15 +296,22 @@ def ground(proposals, units, nlp):
             reasons.append('explicit_commitment_not_found')
         # Require task content to have lexical support, without claiming entailment.
         task_words, source_words = words(task_doc), words(doc)
+        task = proposal.task
         if not task_words or not task_words.intersection(source_words):
-            discarded.append({'task': proposal.task, 'source_id': proposal.source_id, 'reason': 'task_has_no_lexical_support'})
-            continue
+            if multilingual and source_words and len(proposal.quote)<=1000:
+                # Do not accept an unsupported/translated task label as evidence.
+                # Keep the verbatim proposal clause for a reviewer to shorten.
+                task = proposal.quote
+                reasons.append('task_retained_as_source_clause_requires_edit')
+            else:
+                discarded.append({'task': proposal.task, 'source_id': proposal.source_id, 'reason': 'task_has_no_lexical_support'})
+                continue
         owner, owner_method, owner_reasons = urdu.owner(proposal,unit) if multilingual else resolve_owner(proposal, unit, doc, task_doc)
         reasons.extend(owner_reasons)
         dates = [d for d in unit['dates'] if d['text'] in proposal.quote]
         deadline = proposal.deadline.strip() if proposal.deadline else None
         if deadline and (deadline not in proposal.quote or not any(
-                deadline in d['text'] or d['text'] in deadline for d in dates)):
+                deadline in d['text'] for d in dates)):
             deadline = None
             reasons.append('unsupported_deadline_removed')
         if deadline is None and len(dates) == 1:
@@ -313,7 +324,7 @@ def ground(proposals, units, nlp):
         else:
             reasons.append('deadline_requires_meeting_date_and_review')
         ev = evidence(unit, proposal.quote)
-        item = {'task': proposal.task, 'owner': owner, 'deadline': deadline, 'deadline_normalized': None,
+        item = {'task': task, 'owner': owner, 'deadline': deadline, 'deadline_normalized': None,
                 'source_id': ev['source_ids'][0], 'source_ids': ev['source_ids'], 'evidence': [ev],
                 'kind': kind, 'status': 'proposed' if kind == 'commitment' else kind,
                 'needs_review': True, 'review_reasons': reasons,

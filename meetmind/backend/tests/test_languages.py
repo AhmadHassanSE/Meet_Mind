@@ -1,6 +1,6 @@
 import asyncio
 import json
-from types import SimpleNamespace
+from pathlib import Path
 
 import httpx
 import pytest
@@ -47,7 +47,7 @@ def test_upload_language_override_and_unicode_roundtrip(client):
 
 def test_translation_preserves_identity_and_rejects_missing_ids(monkeypatch):
     real_client=httpx.AsyncClient
-    response={'translations':[{'source_id':7,'english':'I will send the report tomorrow.'}]}
+    response={'translations':{'7':'I will send the report tomorrow.'}}
     def handler(request):
         assert 'Roman Urdu' in json.loads(request.content)['messages'][0]['content']
         return httpx.Response(200,json={'message':{'content':json.dumps(response)}})
@@ -56,7 +56,7 @@ def test_translation_preserves_identity_and_rejects_missing_ids(monkeypatch):
     translated=asyncio.run(languages.translate(original,'http://ollama','local'))
     assert translated[0]['id']==7 and translated[0]['speaker']=='Ali'
     assert original[0]['text']=='Main report kal bhej dunga.'
-    response['translations'][0]['source_id']=8
+    response['translations']={'8':'Wrong source ID'}
     with pytest.raises(ValueError,match='IDs'):asyncio.run(languages.translate(original,'http://ollama','local'))
 
 
@@ -100,3 +100,52 @@ def test_english_only_audio_model_cannot_silently_process_urdu(tmp_path,monkeypa
     monkeypatch.setattr(media,'MODEL_NAME','base.en')
     with pytest.raises(ValueError,match='English-only'):
         media.transcribe_media(tmp_path/'meeting.wav',lambda *args:None,language='ur')
+
+
+def test_user_supplied_format_and_deadline_phrases():
+    original=(Path(__file__).parent/'fixtures/urdu-project-review.txt').read_text(encoding='utf-8')
+    meeting=prepare(original)
+    parents=meeting['source_segments']
+    assert len(parents)==8
+    assert [p['speaker'] for p in parents]==['احمد','سارا','علی','سارا','احمد','سارا','علی','احمد']
+    assert [p['start'] for p in parents]==[0,15,30,42,55,70,85,100]
+    assert all(p['start']==p['end'] for p in parents)
+    assert urdu.dates('ہم اسے آج شام تک ٹھیک کر لیں گے۔')[0]['text']=='آج شام تک'
+    assert urdu.dates('میں دو بجے تک بلڈ دوں گی۔')[0]['text']=='دو بجے تک'
+    assert urdu.dates('کل صبح تک ریویو مکمل ہوگا۔')[0]['text']=='کل صبح تک'
+    assert urdu.dates('سارا دوپہر دو بجے تک بلڈ دیں گی۔')[0]['text']=='دوپہر دو بجے تک'
+
+
+def test_multilingual_classifier_uses_translation_without_replacing_sources(monkeypatch):
+    meeting={'segments':[{'id':1,'text':'Main kal report bhejunga.','speaker':'Ali'}],'input_language':'roman-ur'}
+    async def translated(*args):return [{'id':1,'text':'I will send the report tomorrow.','speaker':'Ali'}]
+    def classifier(segments):
+        assert segments[0]['text']=='I will send the report tomorrow.'
+        return {'predictions':[{'source_id':1,'needs_review':False,'review_reasons':[]}],'model':{}}
+    monkeypatch.setattr(languages,'translate',translated)
+    result=asyncio.run(languages.classify(meeting,classifier,'http://local','model'))
+    assert meeting['segments'][0]['text']=='Main kal report bhejunga.'
+    assert result['predictions'][0]['needs_review']
+    assert result['language_processing']['validated_on_urdu'] is False
+
+
+def test_unsupported_english_task_is_retained_as_original_urdu_clause():
+    pytest.importorskip('spacy')
+    text='میں رپورٹ کل بھیج دوں گا۔'
+    meeting=prepare('علی: '+text)
+    meeting['input_language']='ur'
+    units=commitments.source_units(meeting,[{'source_id':s['id'],'label':'off','score':.8} for s in meeting['segments']])
+    for unit in units:unit.update(doc=urdu.nlp()(unit['text']),people=[],dates=urdu.dates(unit['text']))
+    proposal=commitments.Proposal(task='send report',owner=None,deadline=None,source_id=units[0]['source_id'],quote=text,kind='commitment')
+    item=commitments.ground([proposal],units,urdu.nlp())['actions'][0]
+    assert item['task']==text
+    assert 'task_retained_as_source_clause_requires_edit' in item['review_reasons']
+    assert item['deadline']=='کل'
+
+
+def test_english_bypasses_translation(monkeypatch):
+    async def forbidden(*args):raise AssertionError('English must not require translation')
+    monkeypatch.setattr(languages,'translate',forbidden)
+    segments=[{'id':1,'text':'I will send the report.','speaker':'Ali'}]
+    result=asyncio.run(languages.classify({'segments':segments},lambda s:{'predictions':[]},'local','model'))
+    assert result=={'predictions':[]}

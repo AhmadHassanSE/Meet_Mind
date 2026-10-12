@@ -13,6 +13,7 @@ dist/
 build/
 release/
 *.log
+meetmind/frontend/runs/
 
 # Local data and datasets
 amicorpus/

@@ -13,14 +13,14 @@ from fastapi.testclient import TestClient
 from app import main
 
 
-def run(paths, expect_failure=False):
+def run(paths, expect_failure=False, language='auto'):
     with tempfile.TemporaryDirectory(prefix="meetmind-smoke-") as directory:
         main.DB_PATH = Path(directory) / "test.db"
         with TestClient(main.app) as client:
             for filename in paths:
                 path = Path(filename)
                 with path.open("rb") as fixture:
-                    response = client.post("/api/ingestion/media", data={"title": f"Smoke: {path.name}"},
+                    response = client.post("/api/ingestion/media", data={"title": f"Smoke: {path.name}", 'input_language': language},
                                            files={"file": (path.name, fixture)})
                 response.raise_for_status()
                 job_id = response.json()["id"]
@@ -52,8 +52,11 @@ def run(paths, expect_failure=False):
 
 
 if __name__ == "__main__":
+    import sys
+    sys.stdout.reconfigure(encoding='utf-8')
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('paths', nargs='+')
     parser.add_argument('--expect-failure', action='store_true', help='Use only silent or audio-free fixtures')
+    parser.add_argument('--language', choices=['auto','en','ur','roman-ur','mixed'], default='auto')
     args = parser.parse_args()
-    run(args.paths, args.expect_failure)
+    run(args.paths, args.expect_failure, args.language)

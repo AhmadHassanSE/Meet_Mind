@@ -5,13 +5,13 @@ from functools import lru_cache
 
 STOP = set('i will the a an to by on in of and is are send not do can could should we you it this that main mein mai me hum aap tum woh wo yeh ye hai hain ho hoon hun kar karo karna karein karen karunga karungi karega karegi karenge ga gi ge ko ka ki ke tak se aur nahi nahin nai mat chahiye shayad sakta sakti sakte dunga dungi doon dun diya dena bhej bhejna bhejunga bhejungi kal aaj'.split())
 STOP.update('میں ہم آپ تم وہ یہ ہے ہیں ہوں ہو کو کا کی کے تک سے اور نہیں مت گا گی گے کروں کریں کرنا کر بھیج دوں دو دیں کل آج'.split())
-NEGATIVE = re.compile(r'(?<!\w)(?:nahi|nahin|nai|mat|نہیں|نہ|مت)(?!\w)',re.I)
+NEGATIVE = re.compile(r'(?<!\w)(?:nahi|nahin|nai|nhi|mat|نہیں|نہ|مت)(?!\w)',re.I)
 CANCEL = re.compile(r'(?<!\w)(?:cancel|cancelled|canceled|withdraw|scrap|منسوخ|کینسل)(?!\w)',re.I)
-FUTURE = re.compile(r'(?<!\w)(?:karunga|karungi|karenge|karega|karegi|bhejunga|bhejungi|dunga|dungi|ga|gi|ge|گا|گی|گے|وعدہ)(?!\w)',re.I)
+FUTURE = re.compile(r'(?<!\w)(?:karunga|karungi|krunga|krungi|karoonga|karoongi|karenge|karega|karegi|bhejunga|bhejungi|bhejoonga|bhejoongi|dunga|dungi|doonga|doongi|ga|gi|ge|گا|گی|گے|وعدہ)(?!\w)',re.I)
 UNCERTAIN = re.compile(r'(?<!\w)(?:chahiye|shayad|sakta|sakti|sakte|cha[h]?iye|agar|چاہیے|چاہیئے|شاید|سکتا|سکتی|سکتے|اگر)(?!\w)',re.I)
-FIRST = re.compile(r'^\s*(?:main|mein|mai|میں)(?!\w)',re.I)
+FIRST = re.compile(r'(?:^|[،,])\s*(?:main|mein|mai|میں)(?!\w)',re.I)
 AMBIGUOUS = {'main','mein','mai','hum','aap','tum','woh','wo','yeh','ye','team','unknown','none','میں','ہم','آپ','تم','وہ','یہ'}
-DATE = re.compile(r'(?<!\w)(?:(?:aglay|agle|agli|next|this|اگلے|اگلی|آئندہ|اس)\s+)?(?:kal|aaj|parson|parso|jumma|juma|peer|mangal|budh|jumerat|hafta|itwar|monday|tuesday|wednesday|thursday|friday|saturday|sunday|week|month|کل|آج|پرسوں|پیر|منگل|بدھ|جمعرات|جمعہ|ہفتہ|اتوار|مہینے)(?:\s+(?:tak|ko|تک|کو))?(?!\w)',re.I)
+DATE = re.compile(r'(?<!\w)(?:(?:(?:دوپہر|صبح|شام|رات)\s+)?(?:ایک|دو|تین|چار|پانچ|چھ|سات|آٹھ|نو|دس|گیارہ|بارہ|[0-9۰-۹]+)\s+بجے(?:\s+تک)?|(?:دوپہر|صبح|شام|رات)\s+تک|(?:(?:aglay|agle|agli|next|this|اگلے|اگلی|آئندہ|اس|اسی)\s+)?(?:kal|aaj|parson|parso|jumma|juma|peer|mangal|budh|jumerat|hafta|itwar|monday|tuesday|wednesday|thursday|friday|saturday|sunday|week|month|کل|آج|پرسوں|پیر|منگل|بدھ|جمعرات|جمعہ|ہفتے|ہفتہ|اتوار|مہینے)(?:\s+(?:subah|shaam|sham|raat|dopahar|صبح|شام|رات|دوپہر))?(?:\s+(?:tak|ko|تک|کو))?)(?!\w)',re.I)
 
 
 @lru_cache(maxsize=1)

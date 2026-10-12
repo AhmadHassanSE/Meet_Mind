@@ -24,7 +24,11 @@ npm.cmd run dev
 
 Open the localhost URL printed by Vite. Development requests proxy to the local backend. API documentation: http://127.0.0.1:8000/docs
 
-Configuration: backend environment variables `OLLAMA_URL`, `OLLAMA_MODEL`, `MEETMIND_DB`, `WHISPER_MODEL`, `FFMPEG_PATH`. Defaults: localhost:11434, llama3.2:latest, backend/meetmind.db, base.en, ffmpeg. Frontend `MEETMIND_BACKEND_URL` overrides the development proxy target (default localhost:8000). No hosted AI provider or API key is used. Dependency/model downloads require internet; meeting transcription and extraction run locally. First media ingestion downloads Whisper weights if not cached, so prepare the model before an offline demo. A local model directory can be supplied as `WHISPER_MODEL`.
+Configuration: backend environment variables `OLLAMA_URL`, `OLLAMA_MODEL`, `MEETMIND_DB`, `WHISPER_MODEL`, `FFMPEG_PATH`. Defaults: localhost:11434, llama3.2:latest, backend/meetmind.db, base, ffmpeg. Frontend `MEETMIND_BACKEND_URL` overrides the development proxy target (default localhost:8000). No hosted AI provider or API key is used. Dependency/model downloads require internet; meeting transcription and extraction run locally. First media ingestion downloads Whisper weights if not cached, so prepare the model before an offline demo. A local model directory can be supplied as `WHISPER_MODEL`.
+
+## Multilingual input
+
+English, Urdu script, Roman Urdu and mixed transcripts are accepted. Use the Meeting language selector. Urdu/Roman Urdu analysis translates locally before English BERT; original text remains evidence. Install `ollama pull qwen3:4b` for the multilingual path. See [multilingual setup and evidence limits](backend/MULTILINGUAL.md).
 
 ## Current scope
 
@@ -60,7 +64,7 @@ The four upload tabs support:
 | Audio | WAV, MP3, M4A, OGG, FLAC, AAC | FFmpeg → mono 16 kHz PCM → local faster-whisper |
 | Meeting recording | MP4, WEBM, MOV, MKV | Extract audio → same local transcription pipeline |
 
-Transcript files: 2 MB maximum and 500,000 normalized characters. Pasted text: 500,000 characters. Media: 200 MB and two hours maximum. Actual codec support depends on the installed FFmpeg build. Only English speech is currently supported. Audio/video speaker labels remain unknown; diarization and live Google Meet/Teams connections are future work. A silent recording or video without an audio track produces an explicit failure.
+Transcript files: 2 MB maximum and 500,000 normalized characters. Pasted text: 500,000 characters. Media: 200 MB and two hours maximum. Actual codec support depends on the installed FFmpeg build. English and Urdu speech are supported through multilingual Whisper; select a language explicitly for short recordings and review mixed-language output. Audio/video speaker labels remain unknown; diarization and live Google Meet/Teams connections are future work. A silent recording or video without an audio track produces an explicit failure.
 
 Jobs are queued (one worker, three total admitted jobs), decoded, transcribed and saved. Polling progress comes from real backend stages/decoded time, not a simulated timer. Active job IDs survive browser refresh via localStorage. Restarting the backend marks unfinished jobs failed; re-upload is required (jobs do not auto-resume). Temporary media is deleted when a job finishes or fails; forced process termination may leave OS temporary files. Original recordings are not retained in the application database. Use a single backend process, without multiple workers, for this local job implementation. Cancellation is not implemented.
 
@@ -88,7 +92,7 @@ For browser smoke checks, start backend/frontend against a dedicated test databa
 
 Prepare Whisper before evaluation (backend directory):
 ```powershell
-uv run python -c "from faster_whisper import WhisperModel; WhisperModel('base.en', device='cpu', compute_type='int8')"
+uv run python -c "from faster_whisper import WhisperModel; WhisperModel('base', device='cpu', compute_type='int8')"
 ```
 
 API: `POST /api/meetings` (pasted JSON); `POST /api/ingestion/transcript` and `/api/ingestion/media` (multipart `title` + `file`); `GET /api/ingestion/jobs/{id}`; `GET /api/meetings/{id}/transcript?format=txt|json|vtt`. Media uploads return HTTP 202; invalid uploads return 422, oversized media 413, full queue 429, and missing FFmpeg 503. Decoding/transcription failures are reported by the job's `failed` state, without creating an empty meeting.

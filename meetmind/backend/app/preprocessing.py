@@ -9,8 +9,9 @@ from pathlib import Path
 
 from .ingestion import clean, timestamp, IngestionError
 
-VERSION = '1.0'
+VERSION = '1.1'
 TIME = re.compile(r'\[(\d{1,2}:\d{2}(?::\d{2})?(?:[.,]\d+)?)\s*-\s*(\d{1,2}:\d{2}(?::\d{2})?(?:[.,]\d+)?)\]\s*')
+POINT_SPEAKER = re.compile(r'^\[(\d{1,2}:\d{2}(?::\d{2})?(?:[.,]\d+)?)\s*[-–]\s*([^\]\r\n]{1,60})\]:[ \t]*')
 SPEAKER = re.compile(r"^([^:\r\n]{1,60}):[ \t]*(?!//)")
 ABBREVIATIONS = {'mr', 'mrs', 'ms', 'dr', 'prof', 'sr', 'jr', 'vs', 'etc', 'e.g', 'i.e', 'a.m', 'p.m'}
 
@@ -30,15 +31,18 @@ def text_sources(text):
             raw = raw.strip()
             if not raw:
                 continue
-            name = SPEAKER.match(raw)
-            body_start = a + leading + (name.end() if name else 0)
+            point = POINT_SPEAKER.match(raw)
+            name = None if point else SPEAKER.match(raw)
+            body_start = a + leading + (point.end() if point else name.end() if name else 0)
             body = line[0][body_start:b].rstrip()
             if not body:
                 continue
             start, end = (timestamp(timing[1]), timestamp(timing[2])) if timing else (None, None)
+            if point:
+                start = end = timestamp(point[1])  # Point timing: never invent an end.
             if start is not None and end < start:
                 raise IngestionError('Transcript timestamp end precedes its start')
-            result.append({'id': len(result) + 1, 'speaker': name[1] if name else None,
+            result.append({'id': len(result) + 1, 'speaker': point[2].strip() if point else name[1] if name else None,
                            'text': body, 'source': raw, 'start': start, 'end': end,
                            'document_start': line.start() + body_start,
                            'document_end': line.start() + body_start + len(body)})
@@ -104,7 +108,7 @@ def token_policy():
 
 def sentence_ranges(text):
     start = 0
-    for match in re.finditer(r'[.!?۔؟]+["\')\]]*(?=\s|$)', text):
+    for match in re.finditer(r'''(?:[.!?]+["')\]]*(?=\s|$)|[۔؟]+["')\]]*)''', text):
         prefix = text[max(0, match.start() - 100):match.start()]
         word = re.search(r'([\w.]+)$', prefix)
         if match[0].startswith('.') and word:
