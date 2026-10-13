@@ -153,7 +153,7 @@ def test_english_bypasses_translation(monkeypatch):
     assert result=={'predictions':[]}
 
 
-@pytest.mark.parametrize('requested,expected',[('en','en'),('ur','ur'),('roman-ur','ur'),('auto',None),('mixed',None)])
+@pytest.mark.parametrize('requested,expected',[('en','en'),('ur','ur'),('roman-ur','ur'),('auto',None)])
 def test_speech_language_is_forwarded_without_translation(tmp_path,monkeypatch,requested,expected):
     observed={}
     def decode(command,**kwargs):
@@ -171,6 +171,7 @@ def test_speech_language_is_forwarded_without_translation(tmp_path,monkeypatch,r
     segments,metadata=media.transcribe_media(tmp_path/'meeting.wav',lambda *args:None,language=requested)
     assert observed['language']==expected
     assert observed['task']=='transcribe'
+    assert 'multilingual' not in observed and 'initial_prompt' not in observed
     assert metadata['language']=='ur'
     assert segments[0]['text']=='میں رپورٹ بھیجوں گا۔'
 

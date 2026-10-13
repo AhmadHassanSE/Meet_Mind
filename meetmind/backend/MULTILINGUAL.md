@@ -6,7 +6,7 @@ Branch: `feat/urdu-roman-urdu`, based on the latest non-Meet branch
 ## Supported inputs
 
 The UI's **Meeting language** selector applies to paste, transcript files and
-audio/video uploads. Values: `auto`, `en`, `ur`, `roman-ur`, `mixed`.
+audio/video uploads. Values: `auto`, `en`, `ur`, `roman-ur`.
 JSON paste requests and multipart uploads use `input_language` (default `auto`).
 The meeting stores `input_language` and a `language_profile`. Short Roman Urdu
 is ambiguous, so explicit selection is recommended. Detection uses script and
@@ -40,7 +40,7 @@ https://qwenlm.github.io/blog/qwen3/
 ollama pull qwen3:4b
 cd meetmind/backend
 $env:OLLAMA_MULTILINGUAL_MODEL='qwen3:4b'
-$env:WHISPER_MODEL='base'
+$env:WHISPER_MODEL='small'
 uv run --extra nlp uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
@@ -53,9 +53,9 @@ up this feature branch or its new configuration.
 
 ### Audio and recordings
 
-The default speech model is now multilingual Whisper **`base`**, replacing
+The default speech model is now multilingual Whisper **`small`**, replacing
 `base.en`. The first use downloads its weights. `en` forces English, `ur` and
-`roman-ur` force Urdu speech recognition, and `auto`/`mixed` allow language
+`roman-ur` force Urdu speech recognition, and `auto` allows language
 detection. The task is **transcribe**, not translate. Urdu speech normally yields
 Urdu script; the Roman Urdu option does not promise Romanized ASR output.
 
@@ -63,13 +63,13 @@ Whisper language detection on short audio and English/Urdu code switching can
 fail; select English/Urdu explicitly when known and review the transcript.
 `base` is a small CPU model; Urdu recording accuracy has not been established.
 `WHISPER_MODEL` can select another multilingual Whisper model if resources allow.
-An English-only `.en` model explicitly rejects Urdu/mixed/auto audio instead of
+An English-only `.en` model explicitly rejects Urdu/auto audio instead of
 silently treating it as English. It can still be used with `input_language=en`.
 
 ## BERT and commitment processing
 
 1. Preserve the original source transcript and prepared segments.
-2. For Urdu/Roman Urdu/mixed input, translate bounded batches locally to English.
+2. For Urdu/Roman Urdu input, translate bounded batches locally to English.
    Require each original source ID exactly once using a constrained keyed object; reject missing, duplicate, unexpected or truncated output and restore original turn order before storing analysis.
 3. Classify those translations with the existing fine-tuned English BERT.
    Translation text/model and warnings are stored under

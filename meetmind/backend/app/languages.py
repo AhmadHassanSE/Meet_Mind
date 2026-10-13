@@ -10,7 +10,7 @@ from typing import Literal
 import httpx
 from pydantic import BaseModel, ConfigDict
 
-Language = Literal['auto', 'en', 'ur', 'roman-ur', 'mixed']
+Language = Literal['auto', 'en', 'ur', 'roman-ur']
 URDU = re.compile(r'[\u0600-\u06ff\u0750-\u077f\u08a0-\u08ff]')
 ROMAN = {'main', 'mein', 'mai', 'hum', 'aap', 'tum', 'yeh', 'woh', 'ye', 'wo', 'hai', 'hain',
          'ho', 'hoon', 'hun', 'kar', 'karo', 'karna', 'karen', 'karein', 'karenge', 'karunga',
