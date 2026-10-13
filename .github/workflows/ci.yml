@@ -100,6 +100,7 @@ jobs:
           node scripts/smoke-ui.cjs
           uv run --directory ../backend --frozen --no-sync python -m scripts.seed_review_smoke --output ../frontend/review-fixture.json
           node scripts/smoke-review-ui.cjs review-fixture.json
+          node scripts/smoke-languages-ui.cjs
       - name: Upload diagnostic logs
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

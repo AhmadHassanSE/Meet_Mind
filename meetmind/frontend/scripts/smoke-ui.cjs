@@ -37,7 +37,11 @@ const assert = require('node:assert/strict');
     await page.getByRole('button', { name: 'Upload transcript' }).click();
     for (const name of ['Audio', 'Meeting recording']) {
       await page.getByRole('tab', { name, exact: true }).click();
-      await page.getByText('English speech is transcribed locally.', { exact: false }).waitFor();
+      const transcriptionHelp = page.getByLabel('Local transcription information', { exact: true });
+      await transcriptionHelp.waitFor();
+      assert.match(await transcriptionHelp.textContent(), /English and Urdu speech/);
+      await page.getByRole('combobox', { name: 'Meeting language', exact: true }).selectOption('ur');
+      assert.equal(await page.getByRole('combobox', { name: 'Meeting language', exact: true }).inputValue(), 'ur');
     }
     await page.getByRole('tab', { name: 'Audio', exact: true }).click();
     await page.getByLabel('Choose audio file').setInputFiles({ name: 'bad.exe', mimeType: 'application/octet-stream', buffer: Buffer.from('bad') });
@@ -45,6 +49,7 @@ const assert = require('node:assert/strict');
     await page.setViewportSize({ width: 390, height: 844 });
     assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'Mobile horizontal overflow');
     if (process.env.MEETMIND_MEDIA_FIXTURE) {
+      await page.getByRole('combobox', { name: 'Meeting language', exact: true }).selectOption('en');
       await page.getByLabel('Choose audio file').setInputFiles(process.env.MEETMIND_MEDIA_FIXTURE);
       await page.getByLabel('Meeting title').fill(`Media UI fixture ${Date.now()}`);
       await page.getByRole('button', { name: 'Process meeting' }).click();
