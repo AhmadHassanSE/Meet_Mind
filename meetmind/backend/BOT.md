@@ -141,8 +141,14 @@ stop, transcript link and narrow layout. It is not a live Google Meet test.
 
 The local real-audio smoke passed with 12 seconds of captured incoming WebRTC
 speech and a four-segment saved transcript. Initial live attempts reached Google
-but were rejected before admission, including a retry after the user confirmed
-dedicated-account sign-in; they did not validate live capture. Native local
+but were rejected before admission. A later host-approved live call on
+2026-10-13 completed after profile access was resolved and speaker helpers were
+loaded before navigation to accommodate Google's Trusted Types policy. It
+captured 21 seconds, three chunks (57,555 bytes), four observed incoming tracks,
+and saved three transcript segments. Track count is not participant count.
+Speaker labels were unavailable and transcription accuracy was not measured;
+this branch uses English-only `base.en`. This validates one live capture and
+ingestion run, not reliability across accounts or meeting configurations. Native local
 fixtures, synthetic lifecycle tests and real Google meetings are reported
 separately; no diarization/ASR accuracy score is claimed.
 

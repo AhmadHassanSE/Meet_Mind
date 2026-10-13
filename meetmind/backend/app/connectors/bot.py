@@ -109,7 +109,7 @@ class BotManager:
     def capabilities(self):
         return {'playwright_installed':importlib.util.find_spec('playwright') is not None,
                 'ffmpeg_available':bool(ffmpeg_path()),'browser':os.getenv('MEETMIND_BOT_BROWSER','chrome'),
-                'max_active_bots':1,'capture':'incoming_webrtc_audio','live_meet_validated':False}
+                'max_active_bots':1,'capture':'incoming_webrtc_audio','live_meet_validated':True}
 
     async def start(self,data):
         async with self.start_lock:

@@ -40,6 +40,8 @@ class BrowserBot:
         await self.context.expose_binding('__meetmindAudioChunk', binding)
         # The WebRTC hook must be installed before Meet creates peer connections.
         await self.context.add_init_script(path=str(HERE/'bot_audio.js'))
+        for script in ('selectors.js', 'hints_core.js'):
+            await self.context.add_init_script(path=str(EXTENSION/script))
         self.page = self.context.pages[0] if self.context.pages else await self.context.new_page()
         cdp = await self.context.new_cdp_session(self.page)
         # Deny only capture devices; leave unrelated browser permissions unchanged.
@@ -106,8 +108,6 @@ class BrowserBot:
         raise RuntimeError('Admission/sign-in timed out. The host must admit the bot; retry when the call is ready.')
 
     async def start_capture(self):
-        for script in ('selectors.js','hints_core.js'):
-            await self.page.add_script_tag(path=str(EXTENSION/script))
         captions = self.page.get_by_role('button', name=re.compile('turn on captions',re.I))
         if await self.visible(captions): await captions.first.click()
         return await self.page.evaluate('() => __meetmindBotAudio.start()')
