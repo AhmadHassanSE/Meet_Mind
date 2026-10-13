@@ -22,6 +22,40 @@ def validate_config(cfg):
         raise ValueError('Validation sampling is allowed only for a smoke-test, never model selection')
     if cfg.get('stage') == 'full-training-candidate' and cfg.get('max_train_examples', 0):
         raise ValueError('Full-training candidates must use the complete training split')
+    if cfg.get('class_weighting', 'none') not in {'none', 'sqrt_inverse', 'effective_number'}:
+        raise ValueError('Unsupported class_weighting')
+    if cfg.get('context_order', 'chronological') not in {'chronological', 'recent_first'}:
+        raise ValueError('Unsupported context_order')
+    if cfg.get('pair_truncation', 'longest_first') not in {'longest_first', 'target_first'}:
+        raise ValueError('Unsupported pair_truncation')
+    if cfg.get('max_length', 128) > 512:
+        raise ValueError('BERT-base supports at most 512 positions')
+    if 'context_turns' in cfg:
+        value = cfg['context_turns']
+        if not isinstance(value, int) or isinstance(value, bool) or not 0 <= value <= 16:
+            raise ValueError('context_turns must be an integer from 0 to 16')
+    for key, default, low, high in [('layer_lr_decay', 1., 0., 1.),
+                                  ('effective_number_beta', .999, 0., 1.),
+                                  ('warmup_ratio', .1, 0., 1.),
+                                  ('label_smoothing', 0., 0., 1.)]:
+        value = cfg.get(key, default)
+        if not isinstance(value, (int, float)) or isinstance(value, bool) or not math.isfinite(value):
+            raise ValueError(f'{key} must be finite')
+        if not low <= value <= high or (key in {'layer_lr_decay', 'effective_number_beta'} and value == 0):
+            raise ValueError(f'Invalid {key}')
+        if key in {'effective_number_beta', 'warmup_ratio', 'label_smoothing'} and value == 1:
+            raise ValueError(f'{key} must be less than 1')
+    for key, default, minimum in [('head_lr_multiplier', 1., 0.), ('focal_gamma', 0., 0.),
+                                  ('class_weight_cap', None, 0.)]:
+        value = cfg.get(key, default)
+        if value is None and key == 'class_weight_cap':
+            continue
+        if not isinstance(value, (int, float)) or isinstance(value, bool) or not math.isfinite(value) or value < minimum:
+            raise ValueError(f'Invalid {key}')
+        if key != 'focal_gamma' and value == 0:
+            raise ValueError(f'{key} must be positive')
+    if cfg.get('focal_gamma', 0) and cfg.get('label_smoothing', 0):
+        raise ValueError('Focal loss and label smoothing cannot be combined in this trainer')
 
 
 def comparison(reports, reference=None):

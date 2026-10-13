@@ -62,7 +62,8 @@ def test_config_rejects_sampled_full_training_and_validation():
     with pytest.raises(ValueError): validate_config({'learning_rate': 2e-5, 'device': 'cpu', 'precision': 'fp16'})
 
 
-def test_interrupted_training_resumes_exact_weights_without_test_access(tmp_path, monkeypatch):
+@pytest.mark.parametrize('enhanced', [False, True])
+def test_interrupted_training_resumes_exact_weights_without_test_access(tmp_path, monkeypatch, enhanced):
     torch = pytest.importorskip('torch')
     transformers = pytest.importorskip('transformers')
     from scripts import train_bert
@@ -93,6 +94,10 @@ def test_interrupted_training_resumes_exact_weights_without_test_access(tmp_path
            'eval_batch_size': 2, 'gradient_accumulation_steps': 3, 'epochs': 2,
            'learning_rate': 1e-3, 'patience': 5, 'cpu_threads': 1, 'device': 'cpu',
            'precision': 'fp32', 'save_epoch_state': True}
+    if enhanced:
+        cfg.update(context_turns=2, context_order='recent_first', pair_truncation='target_first',
+                   group_optimizer_parameters=True, layer_lr_decay=.9, head_lr_multiplier=2.,
+                   class_weighting='effective_number', class_weight_cap=5., focal_gamma=1.5)
     config = tmp_path / 'config.json'
     def invoke(output, resume=False):
         write_json(config, {**cfg, 'output': str(output)})

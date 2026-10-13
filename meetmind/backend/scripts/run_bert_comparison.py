@@ -8,7 +8,7 @@ from nlp.data import write_json
 from scripts.compare_bert import compare
 
 
-def run(configs, output, reference=None, resume=False):
+def run(configs, output, reference=None, resume=False, skip_baselines=False):
     output = Path(output)
     if (output / 'comparison.json').exists():
         raise ValueError('Comparison already finished; preserve its evidence')
@@ -33,7 +33,8 @@ def run(configs, output, reference=None, resume=False):
         if not report.exists():
             subprocess.check_call([sys.executable, '-u', '-m', 'scripts.evaluate_bert',
                                    '--checkpoint', str(directory / 'best'), '--data', cfg['data'],
-                                   '--split', 'validation', '--output', str(report)])
+                                   '--split', 'validation', '--output', str(report)] +
+                                  (['--skip-baselines'] if skip_baselines else []))
         reports.append(report)
     result = compare(reports, output, reference)
     write_json(output / 'experiment_plan.json', {'configs': [str(p) for p in configs],

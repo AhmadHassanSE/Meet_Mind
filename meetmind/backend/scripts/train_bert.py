@@ -15,15 +15,17 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 from transformers import AutoConfig, AutoModelForSequenceClassification, AutoTokenizer, get_linear_schedule_with_warmup
 
-from nlp.data import load_split, sha256, training_sample, write_json
+from nlp.data import contextualize, load_split, sha256, training_sample, write_json
+from nlp.encoding import encode_pairs
+from nlp.training import ClassificationLoss, class_weights, optimizer_groups
 from nlp.metrics import classification_metrics
 from nlp.experiments import validate_config
 
 
 class EncodedRows(Dataset):
-    def __init__(self, rows, tokenizer, labels, max_length):
-        self.encodings = tokenizer([r['text'] for r in rows], [r['context'] for r in rows],
-                                   truncation='longest_first', max_length=max_length, padding=False)
+    def __init__(self, rows, tokenizer, labels, max_length, strategy='longest_first'):
+        self.encodings = encode_pairs(tokenizer, [r['text'] for r in rows], [r['context'] for r in rows],
+                                      max_length, strategy=strategy)
         self.targets = [labels.index(r['label']) for r in rows]
 
     def __len__(self):
@@ -70,6 +72,10 @@ def main():
     if manifest != other:
         raise ValueError('Dataset manifest changed during loading')
     labels = sorted(manifest['labels'])
+    context_turns = cfg.get('context_turns', manifest['context_turns'])
+    if 'context_turns' in cfg or 'context_order' in cfg:
+        train = contextualize(train, context_turns, cfg.get('context_order', 'chronological'))
+        validation = contextualize(validation, context_turns, cfg.get('context_order', 'chronological'))
     seed = cfg['seed']
     random.seed(seed); np.random.seed(seed); torch.manual_seed(seed)
     torch.set_num_threads(cfg.get('cpu_threads', 4))
@@ -108,18 +114,19 @@ def main():
     from transformers import DataCollatorWithPadding
     collator = DataCollatorWithPadding(tokenizer)
     generator = torch.Generator().manual_seed(seed)
-    train_loader = DataLoader(EncodedRows(train, tokenizer, labels, cfg['max_length']),
+    train_loader = DataLoader(EncodedRows(train, tokenizer, labels, cfg['max_length'], cfg.get('pair_truncation', 'longest_first')),
                               batch_size=cfg['batch_size'], shuffle=True, collate_fn=collator,
                               generator=generator)
-    val_loader = DataLoader(EncodedRows(validation, tokenizer, labels, cfg['max_length']),
+    val_loader = DataLoader(EncodedRows(validation, tokenizer, labels, cfg['max_length'], cfg.get('pair_truncation', 'longest_first')),
                             batch_size=cfg.get('eval_batch_size', 64), collate_fn=collator)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=cfg['learning_rate'], weight_decay=cfg.get('weight_decay', .01))
+    optimizer = torch.optim.AdamW(optimizer_groups(model, cfg), lr=cfg['learning_rate'], weight_decay=cfg.get('weight_decay', .01))
     accumulation = cfg.get('gradient_accumulation_steps', 1)
     total_steps = math.ceil(len(train_loader) / accumulation) * cfg['epochs']
-    scheduler = get_linear_schedule_with_warmup(optimizer, int(total_steps * .1), total_steps)
+    scheduler = get_linear_schedule_with_warmup(optimizer, int(total_steps * cfg.get('warmup_ratio', .1)), total_steps)
     counts = Counter(r['label'] for r in train)
-    weights = torch.tensor([(len(train) / (len(labels) * counts[label])) ** .5 for label in labels], device=device)
-    criterion = torch.nn.CrossEntropyLoss(weight=weights if cfg.get('class_weighting') == 'sqrt_inverse' else None)
+    weights = class_weights(counts, labels, cfg, device)
+    criterion = ClassificationLoss(weights, focal_gamma=cfg.get('focal_gamma', 0.),
+                                   label_smoothing=cfg.get('label_smoothing', 0.))
     scaler = torch.amp.GradScaler('cuda', enabled=precision == 'fp16')
     amp_dtype = torch.float16 if precision == 'fp16' else torch.bfloat16
     output.mkdir(parents=True, exist_ok=True)
@@ -133,6 +140,11 @@ def main():
                 'dataset_manifest_sha256': sha256(Path(cfg['data']) / 'manifest.json'),
                 'python': platform.python_version(), 'torch': torch.__version__,
                 'transformers': __import__('transformers').__version__}
+    resolved['optimizer_groups'] = [{'lr': group['lr'], 'weight_decay': group['weight_decay'],
+                                    'parameters': sum(p.numel() for p in group['params'])}
+                                   for group in optimizer.param_groups]
+    resolved['loss_weights'] = dict(zip(labels, weights.cpu().tolist())) if weights is not None else None
+    resolved['context_turns_used'] = context_turns
     if not args.resume:
         write_json(output / 'run_config.json', resolved)
     best, stale, history = -1., 0, []
@@ -191,7 +203,9 @@ def main():
             write_json(checkpoint / 'meetmind_model.json', {
                 'schema_version': 1, 'task': 'ami_dialogue_act', 'model_name': cfg['model'],
                 'model_revision': revision, 'labels': labels, 'label_descriptions': manifest['labels'],
-                'context_turns': manifest['context_turns'], 'max_length': cfg['max_length'],
+                'context_turns': context_turns, 'max_length': cfg['max_length'],
+                'context_order': cfg.get('context_order', 'chronological'),
+                'pair_truncation': cfg.get('pair_truncation', 'longest_first'),
                 'review_threshold': .7, 'review_margin': .15, 'best_epoch': epoch + 1,
                 'validation_macro_f1': best, 'dataset_manifest_sha256': resolved['dataset_manifest_sha256'],
                 'checkpoint_stage': cfg.get('stage', 'experiment'), 'confidence_calibrated': False,

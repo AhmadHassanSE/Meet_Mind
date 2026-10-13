@@ -5,6 +5,7 @@ from pathlib import Path
 import threading
 
 from nlp.data import ACTION_LABELS, build_inputs, sha256
+from nlp.encoding import encode_pairs
 
 DEFAULT_MODEL = Path(__file__).parents[1] / 'models' / 'dialogue-bert-base-v1'
 _lock = threading.Lock()
@@ -45,6 +46,9 @@ class DialogueClassifier:
             self.metadata = json.loads((self.path / 'meetmind_model.json').read_text(encoding='utf-8'))
             if self.metadata['task'] != 'ami_dialogue_act' or self.metadata['schema_version'] != 1:
                 raise ValueError('Unsupported task/schema')
+            if (self.metadata.get('context_order', 'chronological') not in {'chronological', 'recent_first'} or
+                    self.metadata.get('pair_truncation', 'longest_first') not in {'longest_first', 'target_first'}):
+                raise ValueError('Unsupported input encoding contract')
             self.tokenizer = AutoTokenizer.from_pretrained(self.path, local_files_only=True)
             self.model, info = AutoModelForSequenceClassification.from_pretrained(
                 self.path, local_files_only=True, use_safetensors=True,
@@ -61,7 +65,7 @@ class DialogueClassifier:
             raise BertUnavailable('BERT checkpoint is missing or invalid. Train and configure BERT_MODEL_PATH.') from error
 
     def predict(self, segments):
-        pairs = build_inputs(segments, self.metadata['context_turns'])
+        pairs = build_inputs(segments, self.metadata['context_turns'], self.metadata.get('context_order', 'chronological'))
         results = []
         threshold, margin_threshold = self.metadata['review_threshold'], self.metadata['review_margin']
         with self.torch.inference_mode():
@@ -71,9 +75,9 @@ class DialogueClassifier:
                     truncation=False, padding=False, return_length=True, verbose=False)['length']
                 target_lengths = self.tokenizer([x[0] for x in batch], add_special_tokens=False,
                     truncation=False, padding=False, return_length=True, verbose=False)['length']
-                tokens = self.tokenizer([x[0] for x in batch], [x[1] for x in batch],
-                                         padding=True, truncation='longest_first',
-                                         max_length=self.metadata['max_length'], return_tensors='pt')
+                tokens = encode_pairs(self.tokenizer, [x[0] for x in batch], [x[1] for x in batch],
+                                      self.metadata['max_length'], strategy=self.metadata.get('pair_truncation', 'longest_first'),
+                                      padding=True, return_tensors='pt')
                 probabilities = self.model(**tokens).logits.softmax(-1).tolist()
                 for index, (segment, probs) in enumerate(zip(segments[offset:offset + 32], probabilities)):
                     top = sorted(range(len(probs)), key=lambda i: probs[i], reverse=True)

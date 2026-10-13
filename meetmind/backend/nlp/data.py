@@ -30,15 +30,19 @@ def session_group(meeting_id):
     return re.sub(r'(?<=\d)[a-d]$', '', meeting_id)
 
 
-def build_inputs(segments, context_turns=2):
+def build_inputs(segments, context_turns=2, context_order='chronological'):
     """Sentence pair: current text first, past context second; never future turns.
 
     longest_first truncation keeps the target from being entirely displaced by
     context. Speaker identity is only a relative same/other marker, never a name.
     """
+    if context_order not in {'chronological', 'recent_first'}:
+        raise ValueError('Unknown context order')
     inputs = []
     for index, segment in enumerate(segments):
         previous = segments[max(0, index - context_turns):index]
+        if context_order == 'recent_first':
+            previous = list(reversed(previous))
         context = []
         for item in previous:
             same = (item.get('speaker') is not None and
@@ -46,6 +50,26 @@ def build_inputs(segments, context_turns=2):
             context.append(('same speaker: ' if same else 'other speaker: ') + item['text'])
         inputs.append((segment['text'], ' '.join(context)))
     return inputs
+
+
+def contextualize(rows, context_turns, context_order='chronological'):
+    """Derive causal text views without changing frozen rows, IDs, labels or splits.
+
+    Rebuild context on complete meeting rows BEFORE any smoke/pilot sampling.
+    Labels are never included. Output order remains the dataset order.
+    """
+    from collections import defaultdict
+    meetings = defaultdict(list)
+    for index, row in enumerate(rows):
+        meetings[row['meeting_id']].append((index, row))
+    result = [dict(row) for row in rows]
+    for items in meetings.values():
+        items.sort(key=lambda item: (item[1].get('start') if item[1].get('start') is not None
+                                     else float('inf'), item[1]['id']))
+        pairs = build_inputs([row for _, row in items], context_turns, context_order)
+        for (index, _), (_, context) in zip(items, pairs):
+            result[index]['context'] = context
+    return result
 
 
 def validate_splits(manifest):
