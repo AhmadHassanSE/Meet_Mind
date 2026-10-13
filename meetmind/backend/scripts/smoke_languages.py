@@ -70,7 +70,8 @@ def main_run():
                 result['validation_errors']=errors[:];errors.clear()
                 results.append(result)
                 print(f"{title}: HTTP {response.status_code}, {result['elapsed_seconds']}s; promise found={result.get('explicit_promise_found')}",flush=True)
-    output=Path('runs/language-smoke.json');output.parent.mkdir(exist_ok=True)
+    filename='language-smoke-'+args.fixture.lower().replace(' ','-')+'.json' if args.fixture else 'language-smoke.json'
+    output=Path('runs')/filename;output.parent.mkdir(exist_ok=True)
     output.write_text(json.dumps({'synthetic_fixtures':True,'accuracy_benchmark':False,'model':main.MULTILINGUAL_MODEL,'results':results},ensure_ascii=False,indent=2),encoding='utf-8')
     print('Saved',output,flush=True)
     if any(r['status_code']!=200 or not r.get('explicit_promise_found') for r in results):raise SystemExit(1)

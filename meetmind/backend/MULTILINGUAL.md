@@ -47,7 +47,7 @@ uv run --extra nlp uvicorn app.main:app --host 127.0.0.1 --port 8000
 Qwen3 thinking is disabled for bounded structured outputs. A missing model
 causes an explicit error, not an English-only fallback. `/api/health` reports
 the multilingual model name/status separately from the English extractor.
-Model inference remains local to Ollama; no hosted AI key/provider is added.
+CPU inference on longer transcripts can take several minutes. `OLLAMA_TIMEOUT_SECONDS` configures extraction request timeout (default 600 seconds). Model inference remains local to Ollama; no hosted AI key/provider is added.
 Downloads need internet. Existing Google Meet servers do not automatically pick
 up this feature branch or its new configuration.
 
@@ -70,16 +70,14 @@ silently treating it as English. It can still be used with `input_language=en`.
 
 1. Preserve the original source transcript and prepared segments.
 2. For Urdu/Roman Urdu/mixed input, translate bounded batches locally to English.
-   Require exactly the supplied source IDs in order; reject missing, duplicate,
-   reordered or truncated translation output before storing analysis.
+   Require each original source ID exactly once using a constrained keyed object; reject missing, duplicate, unexpected or truncated output and restore original turn order before storing analysis.
 3. Classify those translations with the existing fine-tuned English BERT.
    Translation text/model and warnings are stored under
    `dialogue_analysis.language_processing`; predictions require human review.
-4. Extract proposals from **original-language turns**. Quotes and deadlines must
-   be verbatim source text. English spaCy NER/parser is used for English turns;
+4. Extract proposals from **original-language turns**. Deadlines must be verbatim source text. In multilingual batches the model selects an allowed source-turn ID and the server attaches that turn verbatim as its quote; English-only batches keep the original substring quote contract. English spaCy NER/parser is used for English turns;
    Urdu/Roman turns use explicitly labelled conservative lexical rules, not
    claimed Urdu NER or parsing. Source-level owner/deadline/negation checks keep
-   ambiguous fields unresolved and suggestions/requests/cancellations separate.
+   ambiguous fields unresolved and suggestions/requests/cancellations separate. If a multilingual task summary has no lexical support, keep the verbatim supporting clause as the task and flag it for editing; do not accept the unsupported summary.
 5. Use the existing revisioned commitment review flow. Translation never replaces
    source evidence. Task lexical support is a conservative filter, not entailment.
 

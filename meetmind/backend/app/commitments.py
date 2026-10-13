@@ -135,6 +135,7 @@ def batches(units, limit=9000):
     current, size = [], 0
     for unit in units:
         public = {k: unit[k] for k in ('source_id', 'text', 'speaker', 'bert_signals', 'people', 'dates')}
+        public['language'] = unit.get('language','en')
         length = len(json.dumps(public, ensure_ascii=False))
         if length > limit:
             raise InvalidExtraction('A source turn is too large for extraction. Re-upload with shorter speaker turns.')
@@ -173,20 +174,40 @@ Examples: 'I will send the report by Friday.' = commitment; 'Could we redesign i
 
 async def propose(units, url, model):
     proposals = []
-    async with httpx.AsyncClient(timeout=httpx.Timeout(180, connect=10)) as client:
+    async with httpx.AsyncClient(timeout=httpx.Timeout(float(os.getenv('OLLAMA_TIMEOUT_SECONDS','600')), connect=10)) as client:
         for batch in batches(units):
+            multilingual_batch = any(u['language']!='en' for u in batch)
+            schema=Proposals.model_json_schema()
+            system=SYSTEM
+            if multilingual_batch:
+                # Let the model select a turn; the server attaches exact source
+                # text rather than asking the model to reproduce Urdu glyphs.
+                definition=schema['$defs']['Proposal']
+                definition['properties'].pop('quote')
+                definition['required'].remove('quote')
+                definition['properties']['source_id']={'type':'integer','enum':[u['source_id'] for u in batch]}
+                system += '\nFor THIS batch the schema intentionally has NO quote field. Return only task, owner, deadline, source_id, kind. Select the exact source_id of the supporting turn. The server attaches the complete original turn as evidence. Do not output quote.'
             response = await client.post(f'{url}/api/chat', json={
-                'model': model, 'stream': False, 'format': Proposals.model_json_schema(),
+                'model': model, 'stream': False, 'format': schema,
                 **({'think':False} if 'qwen3' in model.lower() else {}),
                 'options': {'temperature': 0, 'num_ctx': 8192, 'num_predict': 3000},
-                'messages': [{'role': 'system', 'content': SYSTEM},
+                'messages': [{'role': 'system', 'content': system},
                              {'role': 'user', 'content': json.dumps(batch, ensure_ascii=False)}]})
             response.raise_for_status()
             payload = response.json()
             if payload.get('done_reason') == 'length':
                 raise InvalidExtraction('Ollama output exceeded its limit; no partial results were saved.')
-            result = Proposals.model_validate_json(payload['message']['content'])
             allowed = {u['source_id']: u for u in batch}
+            data=json.loads(payload['message']['content'])
+            if multilingual_batch:
+                for action in data['actions']:
+                    if not isinstance(action,dict):
+                        raise InvalidExtraction('Invalid multilingual proposal object')
+                    source_id=action.get('source_id')
+                    if source_id not in allowed or 'quote' in action:
+                        raise InvalidExtraction('Invalid multilingual source reference')
+                    action['quote']=allowed[source_id]['text']
+            result = Proposals.model_validate(data)
             for proposal in result.actions:
                 if proposal.source_id not in allowed or proposal.quote not in allowed[proposal.source_id]['text']:
                     raise InvalidExtraction('Ollama returned an invalid source ID or quote; saved results were preserved.')
@@ -357,6 +378,8 @@ def ground(proposals, units, nlp):
             item.pop(key)
     return {'actions': actions, 'action_candidates': candidates,
             'extraction': {'version': VERSION, 'spacy': status(), 'discarded': discarded,
+                           'language_rules': {'urdu_roman_used': any(u.get('language','en')!='en' for u in units),
+                                              'urdu_parser_or_ner_trained': False},
                            'source_units': len(units), 'confidence_calibrated': False,
                            'warnings': ['All results require review. Negation and cross-turn cancellation checks are conservative heuristics.',
                                         'Relative deadlines retain source wording; calendar dates are not inferred.']}}

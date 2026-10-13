@@ -1,5 +1,7 @@
 import asyncio
 import json
+import wave
+from types import SimpleNamespace
 from pathlib import Path
 
 import httpx
@@ -149,3 +151,50 @@ def test_english_bypasses_translation(monkeypatch):
     segments=[{'id':1,'text':'I will send the report.','speaker':'Ali'}]
     result=asyncio.run(languages.classify({'segments':segments},lambda s:{'predictions':[]},'local','model'))
     assert result=={'predictions':[]}
+
+
+@pytest.mark.parametrize('requested,expected',[('en','en'),('ur','ur'),('roman-ur','ur'),('auto',None),('mixed',None)])
+def test_speech_language_is_forwarded_without_translation(tmp_path,monkeypatch,requested,expected):
+    observed={}
+    def decode(command,**kwargs):
+        with wave.open(command[-1],'wb') as output:
+            output.setnchannels(1);output.setsampwidth(2);output.setframerate(16000)
+            output.writeframes(b'\0\0'*16000)
+        return SimpleNamespace(returncode=0)
+    def speech(samples,**kwargs):
+        observed.update(kwargs)
+        return iter([SimpleNamespace(text='میں رپورٹ بھیجوں گا۔',start=0,end=1)]),SimpleNamespace(language='ur')
+    monkeypatch.setattr(media,'MODEL_NAME','base')
+    monkeypatch.setattr(media,'ffmpeg_path',lambda:'ffmpeg')
+    monkeypatch.setattr(media.subprocess,'run',decode)
+    monkeypatch.setattr(media,'_model',SimpleNamespace(transcribe=speech))
+    segments,metadata=media.transcribe_media(tmp_path/'meeting.wav',lambda *args:None,language=requested)
+    assert observed['language']==expected
+    assert observed['task']=='transcribe'
+    assert metadata['language']=='ur'
+    assert segments[0]['text']=='میں رپورٹ بھیجوں گا۔'
+
+
+@pytest.mark.parametrize('source_id',[1,99])
+def test_multilingual_proposals_attach_source_text_in_server(monkeypatch,source_id):
+    original='میں رپورٹ کل بھیج دوں گا۔'
+    unit={'source_id':1,'text':original,'speaker':'علی','language':'ur','bert_signals':[],'people':[],'dates':[]}
+    real_client=httpx.AsyncClient
+    def handler(request):
+        body=json.loads(request.content)
+        definition=body['format']['$defs']['Proposal']
+        assert 'quote' not in definition['properties']
+        assert definition['properties']['source_id']['enum']==[1]
+        return httpx.Response(200,json={'message':{'content':json.dumps({'actions':[{
+            'source_id':source_id,'task':'رپورٹ بھیج','owner':None,'deadline':'کل','kind':'commitment'}]})}})
+    monkeypatch.setattr(commitments.httpx,'AsyncClient',lambda **kwargs:real_client(transport=httpx.MockTransport(handler),**kwargs))
+    if source_id==99:
+        with pytest.raises(commitments.InvalidExtraction):asyncio.run(commitments.propose([unit],'http://ollama','qwen3:4b'))
+    else:
+        proposals=asyncio.run(commitments.propose([unit],'http://ollama','qwen3:4b'))
+        assert proposals[0].quote==original
+
+
+@pytest.mark.parametrize('text,expected',[("I won't send the report.",'cancellation'),('Main report nhi bhejunga.','cancellation'),('We should send the report.','suggestion')])
+def test_code_switched_negation_and_uncertainty(text,expected):
+    assert urdu.kind(text,'commitment')[0]==expected

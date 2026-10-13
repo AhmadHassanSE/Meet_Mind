@@ -73,7 +73,7 @@ export function CommitmentResults({ meeting, onReview, disabled = false }: { mee
       <p className="muted">Suggestions and requests can become commitments through your explicit approval. Cancellation statements cannot be approved as tasks.</p>
       {meeting.action_candidates.map((item, i) => <Result key={item.id || i} item={item} meeting={meeting} onReview={onReview} disabled={disabled}/>)}</div>}
     {meeting.extraction?.warnings.map(warning => <p className="muted" key={warning}>{warning}</p>)}
-    {meeting.extraction && <small className="muted">Entities: {meeting.extraction.spacy.model} {meeting.extraction.spacy.version}</small>}
+    {meeting.extraction && <small className="muted">English entities: {meeting.extraction.spacy.model} {meeting.extraction.spacy.version}</small>}
     {meeting.model && <p className="muted">Interpreted locally with {meeting.model}</p>}
   </section>;
 }
