@@ -44,6 +44,10 @@ The default model `pyannote/speaker-diarization-community-1` is gated: open its 
 
 Recording other people needs their knowledge. The extension shows a red banner on the Meet page and a REC badge while it records; tell participants before you start.
 
+## Browser meeting bot
+
+A separate browser participant is now available alongside the extension. Install the backend `bot` extra and use **Google Meet bot** in the sidebar. Host admission and, where required, manual sign-in to a dedicated bot account are required. See [browser bot setup, API and validation limits](backend/BOT.md).
+
 ## Current scope
 
 ### Fine-tuned BERT (10 October update)

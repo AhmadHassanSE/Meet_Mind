@@ -98,6 +98,7 @@ jobs:
           done
           if [ "$ready" != true ]; then cat backend.log frontend.log; exit 1; fi
           node scripts/smoke-ui.cjs
+          node scripts/smoke-bot-ui.cjs
       - name: Upload diagnostic logs
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

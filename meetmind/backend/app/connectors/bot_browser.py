@@ -34,15 +34,31 @@ class BrowserBot:
             args=['--autoplay-policy=no-user-gesture-required'])
         self.context.set_default_timeout(4000)
         async def binding(source,data):
+            if source['page'] is not self.page or source['frame'] is not self.page.main_frame:
+                raise RuntimeError('Audio uploads must come from the bot meeting page')
             await on_chunk(data)
         await self.context.expose_binding('__meetmindAudioChunk', binding)
         # The WebRTC hook must be installed before Meet creates peer connections.
         await self.context.add_init_script(path=str(HERE/'bot_audio.js'))
         self.page = self.context.pages[0] if self.context.pages else await self.context.new_page()
         cdp = await self.context.new_cdp_session(self.page)
-        # CDP grantPermissions grants the supplied list and rejects all others.
-        await cdp.send('Browser.grantPermissions', {'permissions':[], 'origin':'https://meet.google.com'})
-        await self.page.goto(meeting_url, wait_until='domcontentloaded', timeout=60000)
+        # Deny only capture devices; leave unrelated browser permissions unchanged.
+        for device in ('microphone', 'camera'):
+            await cdp.send('Browser.setPermission', {
+                'permission': {'name': device}, 'setting': 'denied',
+                'origin': 'https://meet.google.com'})
+        for attempt in range(2):
+            try:
+                await self.page.goto(meeting_url, wait_until='domcontentloaded', timeout=60000)
+                break
+            except Exception as error:
+                network = re.search(r'net::(ERR_[A-Z_]+)',str(error))
+                if network and attempt==0:
+                    await asyncio.sleep(2)
+                    continue
+                if network:
+                    raise RuntimeError(f'Google Meet could not be reached ({network[1]}). Check the network and browser connection, then retry.') from error
+                raise
 
     async def visible(self, locator):
         return await locator.count() > 0 and await locator.first.is_visible()
@@ -54,9 +70,18 @@ class BrowserBot:
         while time.monotonic() < deadline:
             if control.cancel.is_set() or control.stop.is_set(): raise BotCancelled()
             if self.page.is_closed(): raise RuntimeError('Bot browser was closed before admission')
+            without_devices = self.page.get_by_role('button',name=re.compile('continue without microphone and camera',re.I))
+            if await self.visible(without_devices):
+                await without_devices.first.click()
+                await asyncio.sleep(1)
+                continue
             body = await self.page.locator('body').inner_text(timeout=4000)
             denied = DENIED.search(body)
-            if denied: raise RuntimeError('Google Meet did not admit the bot: '+denied[0])
+            signin = self.page.get_by_role('button',name=re.compile(r'^sign in$',re.I)).or_(
+                self.page.get_by_role('link',name=re.compile(r'^sign in$',re.I)))
+            manual_login = not requested and (('accounts.google.com' in self.page.url) or
+                           bool(denied and await self.visible(signin)))
+            if denied and not manual_login: raise RuntimeError('Google Meet did not admit the bot: '+denied[0])
             if await self.visible(self.page.get_by_role('button', name=LEAVE)): return
             join = self.page.get_by_role('button', name=JOIN)
             if await self.visible(join) and not requested:
@@ -68,7 +93,7 @@ class BrowserBot:
                 await join.first.click()
                 requested = True
                 state = 'waiting_for_admission'
-            elif 'accounts.google.com' in self.page.url or not requested:
+            elif manual_login or not requested:
                 state = 'needs_login'
             else: state = 'waiting_for_admission'
             if state != last_state:
