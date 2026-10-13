@@ -7,6 +7,7 @@ import tempfile
 import threading
 from pathlib import Path
 from uuid import uuid4
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -29,6 +30,8 @@ lock = threading.Lock()
 
 
 class SessionInput(BaseModel):
+    capture_method: Literal['extension','browser_bot'] = 'extension'
+    bot_id: str | None = Field(default=None,max_length=36)
     title: str = Field(min_length=1, max_length=200)
     meeting_code: str = Field(default="", max_length=64)
     self_name: str = Field(default="", max_length=80)
@@ -75,7 +78,8 @@ def build_router(save, update_job, submit_job):
             directory = Path(tempfile.mkdtemp(prefix="meetmind-meet-"))
             sessions[session_id] = {"dir": directory, "title": data.title.strip(), "meeting_code": data.meeting_code,
                                     "self_name": data.self_name, "started_at_ms": data.started_at_ms,
-                                    "next_seq": 0, "bytes": 0, "hint_bytes": 0, "finishing": False}
+                                    "next_seq": 0, "bytes": 0, "hint_bytes": 0, "finishing": False,
+                                    'capture_method':data.capture_method,'bot_id':data.bot_id}
         return {"id": session_id}
 
     @router.post("/sessions/{session_id}/audio")
@@ -178,6 +182,7 @@ def build_router(save, update_job, submit_job):
                        "transcript": "\n".join(s["source"] for s in labelled), "segments": labelled,
                        "actions": [], "status": "uploaded", "model": None, "source_type": "google_meet",
                        "filename": None, "meeting_code": session["meeting_code"], **metadata,
+                       'capture_method':session.get('capture_method','extension'),'bot_id':session.get('bot_id'),
                        "speaker_labels": labels, "diarization": diarization, "diarization_note": note,
                        "unattributed_segments": unattributed, **prepared}
             save(meeting)

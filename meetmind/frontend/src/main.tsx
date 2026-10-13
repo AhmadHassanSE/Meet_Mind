@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Zap, FileText, Upload, ArrowRight, Cpu } from 'lucide-react';
 import './styles.css';
+import { MeetingBot } from './MeetingBot';
 import { UploadMeeting } from './UploadMeeting';
 import { CommitmentResults, type CommitmentMeeting } from './CommitmentResults';
 import { PreparedTranscript, type PreparedMeeting } from './PreparedTranscript';
@@ -25,7 +26,7 @@ function speakerNote(m: Meeting) {
 function App() {
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [selected, setSelected] = useState<Meeting | null>(null);
-  const [view, setView] = useState<'meetings' | 'upload'>(() => localStorage.getItem('meetmind-ingestion-job') ? 'upload' : 'meetings');
+  const [view, setView] = useState<'meetings' | 'upload' | 'bot'>(() => localStorage.getItem('meetmind-bot-id') ? 'bot' : localStorage.getItem('meetmind-ingestion-job') ? 'upload' : 'meetings');
   const [health, setHealth] = useState({ ollama: 'checking', model: 'llama3.2:latest', bert: { status: 'checking', stage: '' } });
   const [busy, setBusy] = useState<'extract' | 'bert' | null>(null);
   const [error, setError] = useState('');
@@ -48,8 +49,8 @@ function App() {
     try { setSelected(await request<Meeting>(`/meetings/${selected.id}/classify`, {})); await refresh(); }
     catch (e) { setError((e as Error).message); } finally { setBusy(null); }
   }
-  return <div className="shell"><aside><div className="brand"><Zap/><strong>MeetMind</strong></div><p className="eyebrow">LOCAL WORKSPACE</p><nav><button className={view === 'meetings' ? 'active' : ''} onClick={() => { setView('meetings'); setSelected(null); }}><FileText size={19}/> Meetings</button><button className={view === 'upload' ? 'active' : ''} onClick={() => setView('upload')}><Upload size={19}/> Upload transcript</button></nav><div className="local"><Cpu size={19}/><div>Ollama · {health.ollama}<small>{health.model}</small></div></div></aside><main><header><span>Iteration 01 <span className="muted">/ R&D and NLP pipeline</span></span><span className="pill">Local inference</span></header><div className="content">{error && <div role="alert" className="error">{error}</div>}
-    {view === 'upload' ? <UploadMeeting onReady={openMeeting}/>
+  return <div className="shell"><aside><div className="brand"><Zap/><strong>MeetMind</strong></div><p className="eyebrow">LOCAL WORKSPACE</p><nav><button className={view === 'meetings' ? 'active' : ''} onClick={() => { setView('meetings'); setSelected(null); }}><FileText size={19}/> Meetings</button><button className={view === 'upload' ? 'active' : ''} onClick={() => setView('upload')}><Upload size={19}/> Upload transcript</button><button className={view === 'bot' ? 'active' : ''} onClick={() => setView('bot')}><Cpu size={19}/> Google Meet bot</button></nav><div className="local"><Cpu size={19}/><div>Ollama · {health.ollama}<small>{health.model}</small></div></div></aside><main><header><span>Iteration 01 <span className="muted">/ R&D and NLP pipeline</span></span><span className="pill">Local inference</span></header><div className="content">{error && <div role="alert" className="error">{error}</div>}
+    {view === 'bot' ? <MeetingBot onReady={openMeeting}/> : view === 'upload' ? <UploadMeeting onReady={openMeeting}/>
     : selected ? <>
       <button className="back" onClick={() => setSelected(null)}>← All meetings</button>
       <p className="eyebrow">MEETING WORKSPACE</p><h1>{selected.title}</h1>
