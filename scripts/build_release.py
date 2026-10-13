@@ -15,6 +15,7 @@ FILES = {'meetmind/README.md', 'meetmind/backend/pyproject.toml', 'meetmind/back
          'meetmind/backend/.python-version', 'meetmind/backend/BERT.md',
          'meetmind/backend/COMMITMENTS.md', 'meetmind/backend/PREPROCESSING.md',
          'meetmind/backend/BERT_BASE_COMPARISON.md',
+         'meetmind/backend/BERT_F1_IMPROVEMENT.md',
          'meetmind/frontend/package.json', 'meetmind/frontend/package-lock.json',
          'meetmind/frontend/index.html', 'meetmind/frontend/tsconfig.json',
          'meetmind/frontend/vite.config.ts', 'docs/ci-cd.md'}

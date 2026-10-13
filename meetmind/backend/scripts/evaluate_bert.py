@@ -22,6 +22,7 @@ def main():
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--device', choices=['auto', 'cpu', 'cuda'], default='auto')
     parser.add_argument('--skip-baselines', action='store_true', help='Evaluate BERT only; avoid refitting unchanged TF-IDF baselines')
+    parser.add_argument('--batch-size', type=int, help='Override saved evaluation batch size')
     args = parser.parse_args()
     if args.output.exists():
         raise ValueError('Preserve the existing evaluation: choose a new output file')
@@ -37,6 +38,8 @@ def main():
     if classifier.metadata['dataset_manifest_sha256'] != manifest_hash:
         raise ValueError('Checkpoint was trained with a different dataset manifest')
     cfg = json.loads((args.checkpoint.parent / 'run_config.json').read_text(encoding='utf-8'))
+    eval_batch_size = args.batch_size if args.batch_size is not None else cfg.get('eval_batch_size', 64)
+    if eval_batch_size < 1:raise ValueError('Evaluation batch size must be positive')
     labels = sorted(manifest['labels'])
     if (classifier.metadata['context_turns'] != manifest['context_turns'] or
             classifier.metadata.get('context_order', 'chronological') != 'chronological'):
@@ -56,8 +59,8 @@ def main():
     # Prepared context must remain exactly as in training, including pilot sampling.
     torch.set_num_threads(cfg.get('cpu_threads', 4))
     with torch.inference_mode():
-        for offset in range(0, len(rows), 64):
-            batch = rows[offset:offset + 64]
+        for offset in range(0, len(rows), eval_batch_size):
+            batch = rows[offset:offset + eval_batch_size]
             tokens = encode_pairs(classifier.tokenizer, [r['text'] for r in batch], [r['context'] for r in batch],
                                   classifier.metadata['max_length'], strategy=classifier.metadata.get('pair_truncation', 'longest_first'),
                                   padding=True, return_tensors='pt')

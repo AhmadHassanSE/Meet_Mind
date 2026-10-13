@@ -55,6 +55,11 @@ weights are distributed separately from Git. `BERT_MODEL_PATH` overrides it.
 Restart the backend after installing the selected checkpoint. Dialogue-act labels
 are kept separate from confirmed action commitments and Ollama extraction.
 
+A new [BERT-base macro F1 improvement study](backend/BERT_F1_IMPROVEMENT.md)
+provides three resumable Colab candidates targeting 0.73 macro F1 on the unchanged
+15-class split. The target has not been measured as achieved; the current model
+and its reported score remain unchanged until returned GPU results are verified.
+
 The four upload tabs support:
 
 | Input | Formats | Processing |
