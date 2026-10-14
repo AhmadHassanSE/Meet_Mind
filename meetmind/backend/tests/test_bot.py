@@ -13,6 +13,7 @@ class FakeBrowser:
     instances=[]
     wait_login=False
     tracks=1
+    peak=40
     fail=False
     def __init__(self,profile):
         self.closed=False
@@ -29,10 +30,10 @@ class FakeBrowser:
         update('waiting_for_admission','Waiting for host')
     async def start_capture(self):pass
     async def ended(self):return False
-    async def tick(self):return {'stats':{'remote_tracks':self.tracks},'hints':[]}
+    async def tick(self):return {'stats':{'remote_tracks':self.tracks,'peak':self.peak},'hints':[]}
     async def stop_capture(self):
         await self.on_chunk(base64.b64encode(b'fake-webm').decode())
-        return {'remote_tracks':self.tracks,'bytes':9,'chunks':1},[]
+        return {'remote_tracks':self.tracks,'bytes':9,'chunks':1,'peak':self.peak},[]
     async def close(self):self.closed=True
 
 
@@ -44,6 +45,7 @@ def client(tmp_path,monkeypatch):
     monkeypatch.setattr(bot,'ffmpeg_path',lambda:'ffmpeg')
     monkeypatch.setattr(meet,'ffmpeg_path',lambda:'ffmpeg')
     FakeBrowser.instances=[];FakeBrowser.wait_login=False;FakeBrowser.tracks=1;FakeBrowser.fail=False
+    FakeBrowser.peak=40
     def transcribe(path,update):
         return [{'id':1,'speaker':None,'text':'I will send the report.','source':'I will send the report.','start':0,'end':2}],{'duration':2}
     monkeypatch.setattr(meet,'transcribe_media',transcribe)
@@ -122,6 +124,22 @@ def test_capture_without_remote_tracks_fails_instead_of_fake_success(client):
     assert 'No incoming' in record['message']
     assert client.get('/api/meetings').json()==[]
     assert not meet.sessions
+
+
+def test_silent_tracks_report_diagnosis_and_never_queue_transcription(client):
+    FakeBrowser.peak=0
+    bot_id=client.post('/api/meet/bots',json=input_data()).json()['id']
+    for _ in range(200):
+        record=client.get('/api/meet/bots/'+bot_id).json()
+        if record.get('capture_stats',{}).get('peak')==0:break
+        time.sleep(.01)
+    assert record['capture_stats']['peak']==0
+    client.post('/api/meet/bots/'+bot_id+'/stop')
+    record=await_state(client,bot_id,{'failed'})
+    assert 'silent audio throughout' in record['message']
+    assert not record.get('job_id')
+    assert not meet.sessions
+    assert client.get('/api/meetings').json()==[]
 
 
 def test_launch_failure_and_missing_runtime(client,monkeypatch):

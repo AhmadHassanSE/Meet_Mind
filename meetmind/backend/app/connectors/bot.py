@@ -181,7 +181,8 @@ class BotManager:
                     tick=await browser.tick()
                     if tick['stats'].get('error'):raise RuntimeError(tick['stats']['error'])
                     if tick['hints']:await request('POST',f'/api/meet/sessions/{session_id}/hints',json={'events':tick['hints']})
-                    self.update(bot_id,remote_tracks=tick['stats']['remote_tracks'],elapsed_seconds=round(time.monotonic()-started))
+                    self.update(bot_id,remote_tracks=tick['stats']['remote_tracks'],capture_stats=tick['stats'],
+                                elapsed_seconds=round(time.monotonic()-started))
                     try:await asyncio.wait_for(control.stop.wait(),timeout=1)
                     except TimeoutError:pass
                 if control.cancel.is_set():raise BotCancelled()
@@ -191,6 +192,8 @@ class BotManager:
                 if hints:await request('POST',f'/api/meet/sessions/{session_id}/hints',json={'events':hints})
                 if not stats['remote_tracks'] or not stats['bytes']:
                     raise RuntimeError('No incoming meeting audio was captured. Check admission and remote speech; no transcript was created.')
+                if stats.get('peak') == 0:
+                    raise RuntimeError('The bot received silent audio throughout the recording. Check that another participant is unmuted and audible in the bot window. No transcript was created.')
                 await browser.close();browser=None
                 # Queue contention is temporary; retain the completed capture while retrying.
                 response=None

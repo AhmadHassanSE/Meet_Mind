@@ -152,6 +152,26 @@ ingestion run, not reliability across accounts or meeting configurations. Native
 fixtures, synthetic lifecycle tests and real Google meetings are reported
 separately; no diarization/ASR accuracy score is claimed.
 
+### Silent-track capture regression (14 October 2026)
+
+A reported 78-second failed run had four remote tracks but peak audio level zero.
+The failure was reproduced with real Chrome/WebRTC when the fixture did not
+provide its own audio playback element. Chromium exposed tracks but delivered
+silence to Web Audio. The recorder now owns a hidden, zero-volume playback sink
+for a clone of each incoming track, independently of the meeting page's player.
+Clones/sinks are removed on track replacement/end and recording stop; microphone
+capture remains disabled. The same fixture then recorded audible audio and
+completed local Whisper transcription (8 seconds; two transcript segments).
+
+During recording the UI shows the maximum observed incoming audio level and
+warns after ten seconds with no sound. This is signal detection, not speech
+recognition. An entirely silent capture is rejected before queuing Whisper.
+Run `node scripts/smoke-bot-audio.cjs` from the frontend for a real WebRTC tone
+regression without page-owned playback; it runs in CI. Use
+`scripts.smoke_bot_browser --no-page-playback` with speech for the local
+Chrome/WebRTC/Whisper check. The patched capture still needs a fresh live Meet
+check; the earlier successful live run does not validate this revision.
+
 Primary references:
 - [Playwright persistent browser contexts](https://playwright.dev/python/docs/api/class-browsertype#browser-type-launch-persistent-context)
 - [Chrome permissions protocol](https://chromedevtools.github.io/devtools-protocol/tot/Browser/#method-setPermission)

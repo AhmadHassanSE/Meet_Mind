@@ -35,6 +35,7 @@ PEER_AUDIO='''async (encoded) => {
     const source=context.createBufferSource();source.buffer=audio;source.loop=true;source.connect(destination);
     const sender=new RTCPeerConnection(),receiver=new RTCPeerConnection();
     receiver.addEventListener('track',event=>{
+      if (!window.fixtureRenderAudio) return;
       const audio=document.createElement('audio');audio.srcObject=new MediaStream([event.track]);
       audio.autoplay=true;document.body.appendChild(audio);audio.play();
     });
@@ -50,7 +51,7 @@ PEER_AUDIO='''async (encoded) => {
 }'''
 
 
-async def run(path,seconds):
+async def run(path,seconds,page_playback=True):
     with tempfile.TemporaryDirectory(prefix='meetmind-bot-smoke-') as directory:
         root=Path(directory)
         wave=root/'speech.wav'
@@ -63,6 +64,7 @@ async def run(path,seconds):
                 await super().open('about:blank',on_chunk)
                 await self.page.route('http://meetmind.fixture/',lambda route:route.fulfill(body=HTML,content_type='text/html'))
                 await self.page.goto('http://meetmind.fixture/')
+                await self.page.evaluate('(enabled) => { window.fixtureRenderAudio=enabled; }',page_playback)
                 await self.page.evaluate(PEER_AUDIO,encoded)
         main.DB_PATH=root/'bot.db'
         main.bot_manager.driver_factory=FixtureBrowser
@@ -104,5 +106,6 @@ if __name__=='__main__':
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('recording',type=Path)
     parser.add_argument('--seconds',type=int,default=8)
+    parser.add_argument('--no-page-playback',action='store_true',help='Test capture without a meeting-page audio element')
     args=parser.parse_args()
-    asyncio.run(run(args.recording,args.seconds))
+    asyncio.run(run(args.recording,args.seconds,not args.no_page_playback))

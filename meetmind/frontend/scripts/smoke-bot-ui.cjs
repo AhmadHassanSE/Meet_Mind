@@ -22,7 +22,8 @@ const assert = require('node:assert/strict');
         else if (pathname === '/api/meet/bots' && request.method() === 'POST') {
           create = request.postDataJSON();
           record = { ...create, id: 'bot-fixture', state, message: 'Manual sign-in needed',
-            recorded_bytes: 2048, uploaded_chunks: 1, remote_tracks: 1, events: [] };
+            recorded_bytes: 2048, uploaded_chunks: 1, remote_tracks: 1, events: [],
+            elapsed_seconds: 15, capture_stats: {peak:0,audio_context_state:'running'} };
           data = record;
         } else if (pathname === '/api/meet/bots') data = record ? [record] : [];
         else if (pathname.endsWith('/resume')) { state = 'recording'; data = { ...record, state }; }
@@ -46,6 +47,10 @@ const assert = require('node:assert/strict');
     await page.reload();
     await page.getByRole('heading', { name: 'Google Meet browser bot' }).waitFor();
     await page.getByRole('button', { name: 'Continue after sign-in' }).click();
+    await page.getByText('No incoming sound detected yet.',{exact:false}).waitFor();
+    assert.equal(await page.getByLabel('Peak incoming audio level').getAttribute('value'),'0');
+    record.capture_stats.peak=40;
+    await page.getByText('Sound has been detected during this recording.',{exact:true}).waitFor();
     await page.getByRole('button', { name: 'Stop and transcribe', exact: true }).click();
     await page.getByRole('button', { name: 'Open transcript' }).waitFor();
     assert.equal(await page.getByRole('button', { name: 'Cancel and discard' }).count(), 0);

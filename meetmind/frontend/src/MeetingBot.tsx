@@ -4,6 +4,7 @@ import { Video, Square, X, ArrowRight } from 'lucide-react';
 type BotSession = { id: string; title: string; meeting_url: string; state: string; message: string;
   recorded_bytes: number; uploaded_chunks: number; remote_tracks: number; elapsed_seconds?: number;
   meeting_id?: string; job?: { progress: number; message: string };
+  capture_stats?: { peak?: number; audio_context_state?: string; playback_errors?: number };
   events: { at: string; state: string; message: string }[] };
 type Capabilities = { playwright_installed: boolean; ffmpeg_available: boolean };
 const terminal = new Set(['completed', 'failed', 'cancelled']);
@@ -84,6 +85,11 @@ export function MeetingBot({ onReady }: { onReady: (id: string) => Promise<void>
     </form>
     {session && <section className="panel bot-status" aria-live="polite"><div className="row"><h2>{session.title}</h2><span className={`pill${session.state==='failed'?' warning':''}`}>{session.state.replaceAll('_',' ')}</span></div>
       <p>{session.message}</p><p className="muted">{session.uploaded_chunks} audio chunks · {(session.recorded_bytes/1024).toFixed(1)} KB uploaded · {session.remote_tracks} incoming audio tracks</p>
+      {session.state==='recording' && session.capture_stats && <>
+        <label>Incoming audio level<meter min={0} max={128} value={session.capture_stats.peak || 0} aria-label="Peak incoming audio level"/></label>
+        <p className="muted">{(session.capture_stats.peak || 0)>0 ? 'Sound has been detected during this recording.' : 'Waiting for incoming sound. Track count alone does not mean speech is arriving.'}</p>
+        {(session.elapsed_seconds || 0)>=10 && session.capture_stats.peak===0 && <p role="status" className="error">No incoming sound detected yet. Check that another participant is unmuted and audible in the bot browser. The bot does not record your local microphone.</p>}
+      </>}
       {session.state==='needs_login' && <p className="muted">Finish sign-in or the Google prompt in the dedicated bot browser, then continue here. Passwords and verification codes never go into MeetMind.</p>}
       {session.job && <><p className="muted">{session.job.message}</p><progress max={100} value={session.job.progress} aria-label="Bot transcription progress"/></>}
       <div className="bot-controls">
