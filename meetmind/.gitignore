@@ -10,3 +10,5 @@ backend/data/
 backend/models/
 backend/runs/
 backend/export/
+backend/.bot-profile/
+frontend/runs/

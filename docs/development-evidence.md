@@ -154,3 +154,11 @@ These are functional checks, not an extraction accuracy benchmark. Reviewer
 identity remains unauthenticated in this local workspace. Implementation and
 validation were AI-assisted at the user's direction; the authorized account is
 used for checkpoint commits without claiming manual authorship by its owner.
+
+## 10 October 2026 - Google Meet capture extension
+
+AI-assisted implementation on `feat/google-meet-integration`, pushed per checkpoint: speaker-hint alignment (`85a09fc`), backend capture session API (`ea50756`), caption-based speaker hints and the Chrome extension audio recorder (see branch history), and a Meet source note in the UI. Verified so far: 18 new backend tests (alignment and session API with a mocked transcriber), the existing backend suite unchanged, and the speaker-tracking logic in headless Chrome. Not yet verified: recording in a real Meet call, caption selectors against live markup, hint lag defaults and the frontend production build (Node was unavailable in the authoring environment). No accuracy claim is made for speaker attribution.
+
+## 11 October 2026 - optional pyannote speaker separation for Meet capture
+
+AI-assisted addition on `feat/google-meet-integration`: an optional `diarization` extra runs pyannote.audio (default `pyannote/speaker-diarization-community-1`) on the decoded Meet audio, names its voice clusters from the caption hints, and falls back to caption-hint labels if pyannote, its Hugging Face token or the model access is unavailable. Verified: 84 backend tests passed (alignment and session tests use a fake diarizer; no model was loaded) and the frontend production build passed. The real model was also run once on a 21-second synthetic recording of two Windows text-to-speech voices: it separated two clusters whose turn boundaries matched the script, taking about 24 seconds warm on CPU including model load. This is a functional check on synthetic speech, not an accuracy or speed benchmark. Not yet verified: a real Meet recording, memory and run time on long meetings, and speaker-label accuracy. No accuracy claim is made.

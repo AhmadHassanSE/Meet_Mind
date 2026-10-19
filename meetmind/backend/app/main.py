@@ -22,6 +22,7 @@ from .ingestion import IngestionError, parse_text, parse_transcript, docx_text, 
 from .preprocessing import prepare
 from .media import AUDIO_FORMATS, VIDEO_FORMATS, MAX_MEDIA_BYTES, MODEL_NAME, ffmpeg_path, transcribe_media
 from . import bert, commitments, review, languages
+from .connectors import meet, bot
 
 DB_PATH = Path(os.getenv("MEETMIND_DB", str(Path(__file__).parents[1] / "meetmind.db")))
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434")
@@ -35,7 +36,10 @@ slots = threading.BoundedSemaphore(3)
 async def lifespan(application):
     with connect() as connection:
         connection.execute("UPDATE ingestion_jobs SET status='failed', message='Server restarted. Upload the recording again.' WHERE status NOT IN ('completed', 'failed')")
+    meet.fail_stale()
+    bot_manager.recover()
     yield
+    await bot_manager.shutdown()
 
 
 app = FastAPI(title="MeetMind", version="0.2.0", lifespan=lifespan)
@@ -176,6 +180,24 @@ def update_job(job_id, status, progress, message, meeting_id=None):
     with connect() as connection:
         connection.execute("INSERT OR REPLACE INTO ingestion_jobs VALUES (?, ?, ?, ?, ?)",
                            (job_id, status, progress, message, meeting_id))
+
+
+def submit_job(run):
+    if not slots.acquire(blocking=False):
+        return False
+
+    def guarded():
+        try:
+            run()
+        finally:
+            slots.release()
+    executor.submit(guarded)
+    return True
+
+
+app.include_router(meet.build_router(save, update_job, submit_job))
+bot_manager = bot.BotManager(connect, app)
+app.include_router(bot.build_router(bot_manager))
 
 
 def run_media_job(job_id, title, filename, path, input_language='auto'):

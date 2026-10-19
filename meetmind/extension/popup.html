@@ -1,0 +1,30 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>MeetMind Capture</title>
+<style>
+  body { width: 320px; margin: 0; padding: 12px; font: 13px/1.4 system-ui, sans-serif; color: #1b1b1f; }
+  h1 { font-size: 15px; margin: 0 0 8px; }
+  label { display: block; margin: 8px 0 2px; font-weight: 600; }
+  input { width: 100%; box-sizing: border-box; padding: 5px 6px; }
+  button { margin-top: 10px; padding: 7px 12px; font-size: 13px; cursor: pointer; }
+  #status { margin-top: 10px; padding: 6px 8px; background: #eef2f8; border-radius: 4px; min-height: 1.4em; }
+  #status.error { background: #fde7e5; color: #8c1d18; }
+  #warning { margin-top: 6px; color: #8a5a00; }
+  .row { display: flex; gap: 8px; }
+  a { color: #1a56c4; }
+</style>
+<h1>MeetMind Capture</h1>
+<p>Records this tab's audio (and your microphone) for local transcription. Tell participants you are recording.</p>
+<label for="title">Meeting title</label>
+<input id="title" maxlength="200">
+<label for="self">Your name (for "You" in the call)</label>
+<input id="self" maxlength="80">
+<label for="backend">MeetMind backend</label>
+<input id="backend" value="http://127.0.0.1:8000">
+<div class="row">
+  <button id="start">Start recording</button>
+  <button id="stop" hidden>Stop and transcribe</button>
+</div>
+<div id="status" role="status"></div>
+<div id="warning"></div>
+<script src="popup.js"></script>

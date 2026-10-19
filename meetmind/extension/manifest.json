@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "MeetMind Capture",
+  "version": "0.1.0",
+  "description": "Records Google Meet tab audio and speaker hints for local transcription by MeetMind.",
+  "minimum_chrome_version": "116",
+  "permissions": ["tabCapture", "offscreen", "activeTab", "storage"],
+  "host_permissions": [
+    "https://meet.google.com/*",
+    "http://127.0.0.1:8000/*",
+    "http://localhost:8000/*"
+  ],
+  "optional_host_permissions": ["http://*/*", "https://*/*"],
+  "background": { "service_worker": "background.js" },
+  "action": { "default_title": "MeetMind Capture", "default_popup": "popup.html" },
+  "content_scripts": [
+    {
+      "matches": ["https://meet.google.com/*"],
+      "js": ["selectors.js", "hints_core.js", "content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

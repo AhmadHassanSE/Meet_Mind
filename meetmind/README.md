@@ -30,6 +30,29 @@ Configuration: backend environment variables `OLLAMA_URL`, `OLLAMA_MODEL`, `MEET
 
 English, Urdu script, Roman Urdu transcripts are accepted. Use the Meeting language selector. Urdu/Roman Urdu analysis translates locally before English BERT; original text remains evidence. Install `ollama pull qwen3:4b` for the multilingual path. See [multilingual setup and evidence limits](backend/MULTILINGUAL.md).
 
+## Google Meet capture (Chrome extension)
+
+The `extension/` folder is a Chrome (116+) extension that records a Google Meet tab and sends it to the local backend. No Google account integration or API key is needed, so it works with free Gmail. The tab audio and your microphone are mixed and uploaded in chunks to `POST /api/meet/sessions/...`; when you stop, the backend transcribes locally with Whisper, labels speakers from hints read off Meet's live captions, and saves a `google_meet` meeting you can classify and extract like any other. See `extension/README.md` for setup and limits.
+
+Extra configuration: `MEETMIND_MEET_LAG_MS` (default 500, how long Meet captions lag behind speech) and `MEETMIND_MEET_MIN_CONFIDENCE` (default 0.4, minimum overlap margin before a speaker name is attached; below it the utterance stays "Unknown speaker").
+
+### Speaker separation with pyannote (optional fallback)
+
+By default the caption hints (who Meet shows as speaking) label segments directly. With the `diarization` extra, pyannote.audio acts as a fallback: it runs only when there are no hints, or when more than 30% of segments stay unattributed. It groups the recording into distinct voices, and the hints then only name each voice. This gives separate "Speaker 1, Speaker 2" labels even when no names match.
+
+```powershell
+uv sync --extra nlp --extra diarization --group dev
+uv run --extra nlp --extra diarization uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
+
+The default model `pyannote/speaker-diarization-community-1` is gated: open its page on Hugging Face and accept the conditions, create a read token, then set `HF_TOKEN` (or run `hf auth login`) before starting the backend. If pyannote or the token is missing, or it fails, the meeting still saves with caption-hint labels and the meeting page says why. Configuration: `MEETMIND_DIARIZATION` (`auto` default = fallback only, `always` = run on every meeting, `off` to disable), `MEETMIND_MEET_FALLBACK_UNATTRIBUTED` (default `0.3`, unattributed share that triggers the fallback), `MEETMIND_DIARIZATION_MODEL`, `MEETMIND_MAX_SPEAKERS` (optional upper bound). When it runs, it runs on CPU after transcription, loads the model per meeting and frees it afterwards, so expect extra minutes and memory for long meetings. A Whisper segment is assigned to one speaker, so a long segment containing two voices takes the dominant one.
+
+Recording other people needs their knowledge. The extension shows a red banner on the Meet page and a REC badge while it records; tell participants before you start.
+
+## Browser meeting bot
+
+A separate browser participant is now available alongside the extension. Install the backend `bot` extra and use **Google Meet bot** in the sidebar. Host admission and, where required, manual sign-in to a dedicated bot account are required. See [browser bot setup, API and validation limits](backend/BOT.md).
+
 ## Current scope
 
 ### Commitment review
