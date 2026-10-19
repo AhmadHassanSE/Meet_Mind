@@ -1,0 +1,20 @@
+{
+  "real_local_ollama": true,
+  "real_langgraph": true,
+  "model": "llama3.2:latest",
+  "steps": [
+    "draft_email",
+    "validate_email"
+  ],
+  "approval_valid_before_edit": true,
+  "approval_invalidated_by_edit": true,
+  "persistence_checked": true,
+  "external_message_sent": false,
+  "accuracy_benchmark": false,
+  "generated_subject": "Follow-up on Smoke Fixture Meeting",
+  "generated_body": "Task: Send the project report\nOwner: Sara\nDeadline: Friday\nEvidence: \"I will send the project report by Friday.\"",
+  "backend_tests_passed": 179,
+  "frontend_build_passed": true,
+  "ui_check_api_mocked": true,
+  "external_delivery_implemented": false
+}

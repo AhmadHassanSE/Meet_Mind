@@ -18,6 +18,9 @@ diarization = [
 bot = [
     "playwright>=1.51,<2",
 ]
+agents = [
+    "langgraph>=1,<2",
+]
 
 [[tool.uv.index]]
 name = "pytorch-cpu"

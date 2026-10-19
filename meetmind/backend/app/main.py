@@ -21,7 +21,7 @@ from pydantic import BaseModel, Field
 from .ingestion import IngestionError, parse_text, parse_transcript, docx_text, MAX_TEXT_BYTES
 from .preprocessing import prepare
 from .media import AUDIO_FORMATS, VIDEO_FORMATS, MAX_MEDIA_BYTES, MODEL_NAME, ffmpeg_path, transcribe_media
-from . import bert, commitments, review, languages
+from . import bert, commitments, review, languages, artifacts
 from .connectors import meet, bot
 
 DB_PATH = Path(os.getenv("MEETMIND_DB", str(Path(__file__).parents[1] / "meetmind.db")))
@@ -38,6 +38,7 @@ async def lifespan(application):
         connection.execute("UPDATE ingestion_jobs SET status='failed', message='Server restarted. Upload the recording again.' WHERE status NOT IN ('completed', 'failed')")
     meet.fail_stale()
     bot_manager.recover()
+    artifact_service.recover()
     yield
     await bot_manager.shutdown()
 
@@ -51,6 +52,7 @@ def connect():
     connection.row_factory = sqlite3.Row
     connection.execute("CREATE TABLE IF NOT EXISTS meetings (id TEXT PRIMARY KEY, payload TEXT NOT NULL)")
     connection.execute("CREATE TABLE IF NOT EXISTS ingestion_jobs (id TEXT PRIMARY KEY, status TEXT, progress INTEGER, message TEXT, meeting_id TEXT)")
+    artifacts.schema(connection)
     try:
         with connection:
             yield connection
@@ -107,6 +109,7 @@ def review_commitment(meeting_id: str, item_id: str, data: review.ReviewInput):
         except ValueError as error:
             raise HTTPException(422, str(error)) from error
         connection.execute('UPDATE meetings SET payload = ? WHERE id = ?', (json.dumps(meeting), meeting_id))
+        artifacts.invalidate(connection,meeting_id,item_id)
     return meeting
 
 
@@ -198,6 +201,9 @@ def submit_job(run):
 app.include_router(meet.build_router(save, update_job, submit_job))
 bot_manager = bot.BotManager(connect, app)
 app.include_router(bot.build_router(bot_manager))
+artifact_service = artifacts.Service(connect,OLLAMA_URL,
+    lambda meeting: MULTILINGUAL_MODEL if languages.needs_translation(meeting) else OLLAMA_MODEL)
+app.include_router(artifacts.build_router(artifact_service))
 
 
 def run_media_job(job_id, title, filename, path, input_language='auto'):

@@ -1,0 +1,6 @@
+# Follow-up drafts must pass these rules before explicit approval.
+allow channel email
+require approved_commitment
+require explicit_recipients
+require human_approval
+# Optionally restrict recipients, e.g. allow domain company.example

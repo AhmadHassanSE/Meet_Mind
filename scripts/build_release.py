@@ -9,13 +9,13 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[1]
 DIRECTORIES = ('meetmind/backend/app/', 'meetmind/backend/nlp/',
                'meetmind/backend/scripts/', 'meetmind/backend/configs/',
-               'meetmind/backend/notebooks/',
+               'meetmind/backend/notebooks/', 'meetmind/backend/policies/',
                'meetmind/frontend/src/', 'meetmind/extension/')
 FILES = {'meetmind/README.md', 'meetmind/backend/pyproject.toml', 'meetmind/backend/uv.lock',
          'meetmind/backend/.python-version', 'meetmind/backend/BERT.md',
          'meetmind/backend/COMMITMENTS.md', 'meetmind/backend/PREPROCESSING.md',
          'meetmind/backend/BERT_BASE_COMPARISON.md',
-         'meetmind/backend/BERT_F1_IMPROVEMENT.md', 'meetmind/backend/BOT.md', 'meetmind/backend/MULTILINGUAL.md',
+         'meetmind/backend/BERT_F1_IMPROVEMENT.md', 'meetmind/backend/BOT.md', 'meetmind/backend/ARTIFACTS.md', 'meetmind/backend/MULTILINGUAL.md',
          'meetmind/frontend/package.json', 'meetmind/frontend/package-lock.json',
          'meetmind/frontend/index.html', 'meetmind/frontend/tsconfig.json',
          'meetmind/frontend/vite.config.ts', 'docs/ci-cd.md'}

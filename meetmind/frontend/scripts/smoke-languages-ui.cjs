@@ -7,7 +7,7 @@ const assert = require('node:assert/strict');
 (async () => {
   const root = path.resolve(__dirname, '..');
   const html = fs.readFileSync(path.join(root, 'dist/index.html'), 'utf8');
-  const transcript = fs.readFileSync(path.join(root, '../backend/tests/fixtures/urdu-project-review.txt'), 'utf8');
+  const transcript = fs.readFileSync(path.join(root, '../backend/tests/fixtures/urdu-project-review.txt'), 'utf8').replace(/\r\n/g,'\n');
   const text = 'ہاں بالکل علی، میں دو بجے تک نیا بلڈ ٹیسٹ سرور پر اپ لوڈ کر دوں گی۔';
   let submitted;
   const meeting = { id: 'language-ui', title: 'اردو پروجیکٹ میٹنگ', status: 'uploaded', model: null,
@@ -40,7 +40,7 @@ const assert = require('node:assert/strict');
     });
     await page.goto('http://meetmind.test/');
     await page.getByRole('button', { name: 'Upload transcript', exact: true }).click();
-    assert.equal(await page.getByLabel('Meeting language').locator('option').count(), 5);
+    assert.deepEqual(await page.getByLabel('Meeting language').locator('option').evaluateAll(options=>options.map(option=>option.value)), ['auto','en','ur','roman-ur']);
     await page.getByLabel('Meeting language').selectOption('ur');
     await page.getByLabel('Meeting title').fill(meeting.title);
     await page.getByLabel('Transcript', { exact: true }).fill(transcript);

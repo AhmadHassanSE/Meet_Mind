@@ -16,7 +16,7 @@ export type CommitmentMeeting = {
 };
 type ReviewHandler = (id: string, data: ReviewData) => Promise<void>;
 
-function Result({ item, meeting, onReview, disabled }: { item: Commitment; meeting: CommitmentMeeting; onReview: ReviewHandler; disabled: boolean }) {
+function Result({ item, meeting, onReview, onDraft, disabled }: { item: Commitment; meeting: CommitmentMeeting; onReview: ReviewHandler; onDraft?: (item: Commitment)=>void; disabled: boolean }) {
   const [editing, setEditing] = useState(false);
   const [task, setTask] = useState(item.task);
   const [owner, setOwner] = useState(item.owner || '');
@@ -58,17 +58,18 @@ function Result({ item, meeting, onReview, disabled }: { item: Commitment; meeti
         <button type="button" disabled={saving} onClick={() => { setEditing(false); setError(''); }}>Cancel</button>
       </div>{error && <p role="alert" className="error">{error}</p>}
     </form> : <button disabled={disabled || !item.id} onClick={() => { setTask(item.task); setOwner(item.owner || ''); setDeadline(item.deadline || ''); setEditing(true); }}>Review / edit</button>}
+    {item.review_status==='approved' && onDraft && <button disabled={disabled} onClick={()=>onDraft(item)}>Draft follow-up</button>}
   </article>;
 }
 
-export function CommitmentResults({ meeting, onReview, disabled = false }: { meeting: CommitmentMeeting; onReview: ReviewHandler; disabled?: boolean }) {
+export function CommitmentResults({ meeting, onReview, onDraft, disabled = false }: { meeting: CommitmentMeeting; onReview: ReviewHandler; onDraft?: (item:Commitment)=>void; disabled?: boolean }) {
   const count = [...meeting.actions, ...(meeting.action_candidates || [])].filter(item => item.review_status === 'approved').length;
   return <section className="panel commitment-results"><h2>Extracted commitments</h2>
     <p className="muted">{count} approved. Review evidence, correct the fields, then approve or reject each item. Blank owners and deadlines stay unresolved.</p>
     {[...meeting.actions, ...(meeting.action_candidates || [])].some(item => item.review_history?.length) && <p className="muted">Your review decisions are saved. To extract again, upload a new copy of this meeting; this keeps your reviewed work intact.</p>}
     {meeting.status === 'uploaded' ? <div className="empty">Run extraction to identify commitments.</div>
       : !meeting.actions.length ? <div className="empty">No explicit commitments extracted. Review the transcript and candidates below.</div>
-      : meeting.actions.map((item, i) => <Result key={item.id || i} item={item} meeting={meeting} onReview={onReview} disabled={disabled}/>)}
+      : meeting.actions.map((item, i) => <Result key={item.id || i} item={item} meeting={meeting} onReview={onReview} onDraft={onDraft} disabled={disabled}/>)}
     {!!meeting.action_candidates?.length && <div className="action-candidates"><h2>Suggestions, requests and cancellations</h2>
       <p className="muted">Suggestions and requests can become commitments through your explicit approval. Cancellation statements cannot be approved as tasks.</p>
       {meeting.action_candidates.map((item, i) => <Result key={item.id || i} item={item} meeting={meeting} onReview={onReview} disabled={disabled}/>)}</div>}

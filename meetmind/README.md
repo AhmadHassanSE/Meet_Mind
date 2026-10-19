@@ -2,6 +2,10 @@
 
 Fresh implementation. The sibling `meeting-transcription-agent` directory is reference only.
 
+## Iteration 2: integrated follow-up drafts
+
+The integrated branch combines multilingual ingestion, commitment review, the Meet extension/browser bot, and BERT experiment tooling. [Follow-up drafting and separate approval](backend/ARTIFACTS.md) now use local Ollama and LangGraph. Drafts are persisted and editable; this checkpoint does not send email. Follow that guide for the integrated checkout and existing-model/profile configuration.
+
 ## Run locally (two PowerShell terminals)
 
 Prerequisites: Node.js, uv, Python 3.13 (uv can provision it), FFmpeg on PATH, and Ollama running with `llama3.2:latest` installed. Run the commands below from the repository root in separate terminals.
@@ -10,7 +14,7 @@ Backend:
 ```powershell
 cd meetmind/backend
 $env:UV_PROJECT_ENVIRONMENT='.venv-nlp'
-uv sync --extra nlp --group dev
+uv sync --extra nlp --extra agents --extra bot --group dev
 # Supply the selected checkpoint as described in backend/BERT_BASE_COMPARISON.md.
 uv run --extra nlp uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```

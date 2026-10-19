@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Zap, FileText, Upload, ArrowRight, Cpu } from 'lucide-react';
 import './styles.css';
+import { ArtifactWorkspace, type DraftSource } from './ArtifactWorkspace';
 import { MeetingBot } from './MeetingBot';
 import { UploadMeeting } from './UploadMeeting';
 import { CommitmentResults, type CommitmentMeeting, type ReviewData } from './CommitmentResults';
@@ -18,8 +19,9 @@ async function request<T>(path: string, body?: object): Promise<T> {
 }
 function App() {
   const [meetings, setMeetings] = useState<Meeting[]>([]);
+  const [draftSource, setDraftSource] = useState<DraftSource | null>(null);
   const [selected, setSelected] = useState<Meeting | null>(null);
-  const [view, setView] = useState<'meetings' | 'upload' | 'bot'>(() => localStorage.getItem('meetmind-bot-id') ? 'bot' : localStorage.getItem('meetmind-ingestion-job') ? 'upload' : 'meetings');
+  const [view, setView] = useState<'meetings' | 'upload' | 'bot' | 'drafts'>(() => localStorage.getItem('meetmind-bot-id') ? 'bot' : localStorage.getItem('meetmind-ingestion-job') ? 'upload' : 'meetings');
   const [health, setHealth] = useState({ ollama: 'checking', model: 'llama3.2:latest', bert: { status: 'checking', stage: '' } });
   const [busy, setBusy] = useState<'extract' | 'bert' | 'review' | null>(null);
   const [error, setError] = useState('');
@@ -51,8 +53,8 @@ function App() {
       await refresh();
     } finally { setBusy(null); }
   }
-  return <div className="shell"><aside><div className="brand"><Zap/><strong>MeetMind</strong></div><p className="eyebrow">LOCAL WORKSPACE</p><nav><button className={view === 'meetings' ? 'active' : ''} onClick={() => { setView('meetings'); setSelected(null); }}><FileText size={19}/> Meetings</button><button className={view === 'upload' ? 'active' : ''} onClick={() => setView('upload')}><Upload size={19}/> Upload transcript</button><button className={view === 'bot' ? 'active' : ''} onClick={() => setView('bot')}>Google Meet bot</button></nav><div className="local"><Cpu size={19}/><div>Ollama · {health.ollama}<small>{health.model}</small></div></div></aside><main><header><span>Iteration 01 <span className="muted">/ R&D and NLP pipeline</span></span><span className="pill">Local inference</span></header><div className="content">{error && <div role="alert" className="error">{error}</div>}
-    {view === 'bot' ? <MeetingBot onReady={openMeeting}/> : view === 'upload' ? <UploadMeeting onReady={openMeeting}/>
+  return <div className="shell"><aside><div className="brand"><Zap/><strong>MeetMind</strong></div><p className="eyebrow">LOCAL WORKSPACE</p><nav><button className={view === 'meetings' ? 'active' : ''} onClick={() => { setView('meetings'); setSelected(null); }}><FileText size={19}/> Meetings</button><button className={view === 'upload' ? 'active' : ''} onClick={() => setView('upload')}><Upload size={19}/> Upload transcript</button><button className={view === 'bot' ? 'active' : ''} onClick={() => setView('bot')}>Google Meet bot</button><button className={view === 'drafts' ? 'active' : ''} onClick={() => { setDraftSource(null); setView('drafts'); }}>Follow-up drafts</button></nav><div className="local"><Cpu size={19}/><div>Ollama · {health.ollama}<small>{health.model}</small></div></div></aside><main><header><span>Iteration 02 <span className="muted">/ Reviewed follow-up</span></span><span className="pill">Local inference</span></header><div className="content">{error && <div role="alert" className="error">{error}</div>}
+    {view === 'drafts' ? <ArtifactWorkspace source={draftSource} onMeeting={openMeeting}/> : view === 'bot' ? <MeetingBot onReady={openMeeting}/> : view === 'upload' ? <UploadMeeting onReady={openMeeting}/>
     : selected ? <>
       <button className="back" onClick={() => setSelected(null)}>← All meetings</button>
       <p className="eyebrow">MEETING WORKSPACE</p><h1>{selected.title}</h1>
@@ -61,9 +63,9 @@ function App() {
       <div className="row downloads"><span className="muted">Download transcript</span><div><a href={`/api/meetings/${selected.id}/transcript?format=txt`}>TXT</a> <a href={`/api/meetings/${selected.id}/transcript?format=json`}>JSON</a>{selected.segments.some(s => s.start != null) && <> <a href={`/api/meetings/${selected.id}/transcript?format=vtt`}>VTT</a></>}</div></div>
       <LanguageProcessing profile={selected.language_profile} analysis={selected.dialogue_analysis?.language_processing}/><PreparedTranscript meeting={selected}/>
       <div className="columns"><section className="panel"><h2>Transcript evidence</h2>{selected.segments.map(s => <article key={s.id}><small className="mint">#{s.id} · {s.speaker || 'Unknown speaker'}{s.start != null ? ` · ${s.start.toFixed(1)}s – ${s.end?.toFixed(1)}s` : ''}</small><p dir="auto">{s.text}</p>{s.parent_source_id != null && <details><summary>Source turn #{s.parent_source_id}</summary><p>{selected.source_segments?.find(parent => parent.id === s.parent_source_id)?.text}</p><small className="muted">Characters {s.source_start}?{s.source_end}</small></details>}</article>)}</section>
-      <CommitmentResults meeting={selected} onReview={reviewCommitment} disabled={busy !== null}/></div>
+      <CommitmentResults onDraft={item => { setDraftSource({meeting_id:selected.id,commitment:item}); setView('drafts'); }} meeting={selected} onReview={reviewCommitment} disabled={busy !== null}/></div>
     </>
-    : <><div className="row"><div><p className="eyebrow">FROM CONVERSATION TO CLARITY</p><h1>Your meeting workspace.</h1><p className="muted">Capture discussions. Surface commitments. Keep the evidence.</p></div><button className="primary" onClick={() => setView('upload')}><Upload size={17}/> Upload meeting</button></div><div className="stats"><div className="panel"><strong>{meetings.length}</strong><span>Saved meetings</span></div><div className="panel"><strong>{meetings.reduce((n, m) => n + m.actions.length, 0)}</strong><span>Extracted commitments</span></div><div className="panel"><strong>01</strong><span>Active iteration</span></div></div><h2>Meeting library</h2>{meetings.length ? <div className="library">{meetings.map(m => <button className="panel meeting" key={m.id} onClick={() => void openMeeting(m.id).catch(e => setError(e.message))}><FileText className="mint"/><div><h3>{m.title}</h3><p className="muted">{m.segments.length} utterances · {m.actions.length} commitments</p></div><span className="pill">{m.status}</span><ArrowRight size={18}/></button>)}</div> : <div className="panel empty"><FileText size={32}/><h3>A clearer follow-up starts here.</h3><p className="muted">Upload your first transcript to build your meeting library.</p><button className="primary" onClick={() => setView('upload')}>Add a meeting <ArrowRight size={17}/></button></div>}</>}
+    : <><div className="row"><div><p className="eyebrow">FROM CONVERSATION TO CLARITY</p><h1>Your meeting workspace.</h1><p className="muted">Capture discussions. Surface commitments. Keep the evidence.</p></div><button className="primary" onClick={() => setView('upload')}><Upload size={17}/> Upload meeting</button></div><div className="stats"><div className="panel"><strong>{meetings.length}</strong><span>Saved meetings</span></div><div className="panel"><strong>{meetings.reduce((n, m) => n + m.actions.length, 0)}</strong><span>Extracted commitments</span></div><div className="panel"><strong>02</strong><span>Active iteration</span></div></div><h2>Meeting library</h2>{meetings.length ? <div className="library">{meetings.map(m => <button className="panel meeting" key={m.id} onClick={() => void openMeeting(m.id).catch(e => setError(e.message))}><FileText className="mint"/><div><h3>{m.title}</h3><p className="muted">{m.segments.length} utterances · {m.actions.length} commitments</p></div><span className="pill">{m.status}</span><ArrowRight size={18}/></button>)}</div> : <div className="panel empty"><FileText size={32}/><h3>A clearer follow-up starts here.</h3><p className="muted">Upload your first transcript to build your meeting library.</p><button className="primary" onClick={() => setView('upload')}>Add a meeting <ArrowRight size={17}/></button></div>}</>}
   </div></main></div>;
 }
 createRoot(document.getElementById('root')!).render(<React.StrictMode><App/></React.StrictMode>);

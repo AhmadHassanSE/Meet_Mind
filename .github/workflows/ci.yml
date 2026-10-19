@@ -34,9 +34,9 @@ jobs:
           enable-cache: true
           cache-dependency-glob: meetmind/backend/uv.lock
       - name: Install locked backend and NLP dependencies
-        run: uv sync --frozen --extra nlp --group dev
+        run: uv sync --frozen --extra nlp --extra agents --extra bot --group dev
       - name: Verify NLP components are available
-        run: uv run --frozen --no-sync python -c "import torch, transformers; from app.commitments import load_nlp; load_nlp(); print('NLP dependencies ready')"
+        run: uv run --frozen --no-sync python -c "import torch, transformers, langgraph; from app.commitments import load_nlp; load_nlp(); print('NLP dependencies ready')"
       - name: Run backend tests
         run: uv run --frozen --no-sync python -m pytest -q --junitxml=test-results.xml
       - name: Upload test report
@@ -104,6 +104,7 @@ jobs:
 
           node scripts/smoke-bot-ui.cjs
           node scripts/smoke-bot-audio.cjs
+          node scripts/smoke-artifacts-ui.cjs
       - name: Upload diagnostic logs
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
