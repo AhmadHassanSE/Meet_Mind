@@ -12,7 +12,7 @@ AUDIO_FORMATS = {".wav", ".mp3", ".m4a", ".ogg", ".flac", ".aac"}
 VIDEO_FORMATS = {".mp4", ".webm", ".mov", ".mkv"}
 MAX_MEDIA_BYTES = 200 * 1024 * 1024
 MAX_DURATION = 2 * 60 * 60
-MODEL_NAME = os.getenv("WHISPER_MODEL", "base")
+MODEL_NAME = os.getenv("WHISPER_MODEL", "small")
 _model = None
 _lock = threading.Lock()
 
@@ -22,11 +22,11 @@ def ffmpeg_path():
 
 
 def transcribe_media(path: Path, update, language='auto'):
-    if language not in {'auto','en','ur','roman-ur','mixed'}:
-        raise IngestionError('Choose English, Urdu, Roman Urdu, mixed, or auto.')
+    if language not in {'auto','en','ur','roman-ur'}:
+        raise IngestionError('Choose English, Urdu, Roman Urdu, or auto.')
     speech_language = 'ur' if language in {'ur','roman-ur'} else 'en' if language=='en' else None
     if MODEL_NAME.endswith('.en') and speech_language != 'en':
-        raise IngestionError('This speech model is English-only. Set WHISPER_MODEL=base (or small) for Urdu/mixed audio, or select English.')
+        raise IngestionError('This speech model is English-only. Set WHISPER_MODEL=small (or base) for Urdu audio, or select English.')
     ffmpeg = ffmpeg_path()
     if not ffmpeg:
         raise IngestionError("FFmpeg is missing. Install FFmpeg or configure FFMPEG_PATH, then retry.")

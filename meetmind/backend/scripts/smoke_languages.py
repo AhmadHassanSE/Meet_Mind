@@ -19,8 +19,7 @@ def main_run():
     args=parser.parse_args()
     fixtures=[('English','en','Ali: I will send the report by Friday.'),
               ('Roman Urdu','roman-ur','Ali: Main report kal bhej dunga.'),
-              ('Urdu','ur','علی: میں رپورٹ کل بھیج دوں گا۔'),
-              ('Mixed','mixed','Ali: Main report kal bhej dunga.\nSara: I will review the report by Friday.')]
+              ('Urdu','ur','علی: میں رپورٹ کل بھیج دوں گا۔')]
     supplied=Path('tests/fixtures/urdu-project-review.txt')
     if supplied.exists():fixtures.append(('User-provided Urdu','ur',supplied.read_text(encoding='utf-8')))
     if args.fixture:fixtures=[f for f in fixtures if f[0]==args.fixture]

@@ -57,6 +57,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('paths', nargs='+')
     parser.add_argument('--expect-failure', action='store_true', help='Use only silent or audio-free fixtures')
-    parser.add_argument('--language', choices=['auto','en','ur','roman-ur','mixed'], default='auto')
+    parser.add_argument('--language', choices=['auto','en','ur','roman-ur'], default='auto')
     args = parser.parse_args()
     run(args.paths, args.expect_failure, args.language)

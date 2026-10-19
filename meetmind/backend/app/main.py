@@ -109,7 +109,7 @@ def review_commitment(meeting_id: str, item_id: str, data: review.ReviewInput):
 @app.get("/api/health")
 async def health():
     ingestion = {"ffmpeg": bool(ffmpeg_path()), "speech_model": MODEL_NAME, "bert": bert.status(), 'spacy': commitments.status(),
-                 'languages': {'supported': ['en','ur','roman-ur','mixed'], 'multilingual_model': MULTILINGUAL_MODEL,
+                 'languages': {'supported': ['en','ur','roman-ur'], 'multilingual_model': MULTILINGUAL_MODEL,
                                'speech_multilingual': not MODEL_NAME.endswith('.en'), 'urdu_accuracy_validated': False}}
     try:
         async with httpx.AsyncClient(timeout=3) as client:
