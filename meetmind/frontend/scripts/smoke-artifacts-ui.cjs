@@ -71,6 +71,7 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
     await page.reload();
     await page.getByRole('button',{name:'Follow-up drafts',exact:true}).click();
     await page.getByRole('button',{name:/Report follow-up/}).click();
+    await page.waitForFunction(()=>document.querySelector('textarea[aria-label="Message"]')?.value==='Please send the updated report by Friday.');
     assert.equal(await page.getByLabel('Message',{exact:true}).inputValue(),'Please send the updated report by Friday.');
     assert.deepEqual(errors,[]);
     console.log('Artifact UI passed: approved source, explicit recipients, draft, approval, edit invalidation, rejection, reload and mobile. API mocked.');
