@@ -75,6 +75,27 @@ def test_explicit_addressee_resolves_request_owner(nlp):
     assert result['action_candidates'][0]['owner'] == 'Ali'
 
 
+@pytest.mark.parametrize('source,returned', [
+    ('Write email about "Creation of New module"', 'Write email about \u201cCreation of New module\u201d'),
+    ('I\u2019ll send the report.', "I'll send the report."),
+])
+def test_typographic_evidence_restores_original_offsets(source, returned):
+    restored = c.restore_source_quote(returned, source)
+    assert restored == source
+    assert source[source.index(restored):source.index(restored) + len(restored)] == restored
+
+
+@pytest.mark.parametrize('quote,text', [
+    ('I will send the report.', 'I will not send the report.'),
+    ('Send the report', 'send the report'),
+    ('Send  report', 'Send report'),
+    ('\u201csend\u201d', '"send" then "send"'),
+])
+def test_evidence_repair_rejects_changed_meaning_or_ambiguous_span(quote, text):
+    with pytest.raises(c.InvalidExtraction):
+        c.restore_source_quote(quote, text)
+
+
 @pytest.mark.parametrize('invalid', ['quote', 'source', 'schema', 'limit'])
 def test_ollama_response_validation(monkeypatch, invalid):
     import asyncio

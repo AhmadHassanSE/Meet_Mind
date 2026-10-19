@@ -172,6 +172,22 @@ Examples: 'I will send the report by Friday.' = commitment; 'Could we redesign i
 'Ali, can you book the room?' = request; 'Do not send the report.' = cancellation. No actions are executed."""
 
 
+def restore_source_quote(quote, text):
+    """Restore typographic quote substitutions to a unique verbatim source span.
+
+    Only one-character quotation-mark substitutions are allowed. Words, case,
+    whitespace and negations must still match; persisted evidence is original text.
+    """
+    if quote in text:
+        return quote
+    table = str.maketrans({'\u201c': '"', '\u201d': '"', '\u2018': "'", '\u2019': "'"})
+    normalized_text, normalized_quote = text.translate(table), quote.translate(table)
+    start = normalized_text.find(normalized_quote)
+    if start < 0 or normalized_text.find(normalized_quote, start + 1) >= 0:
+        raise InvalidExtraction('Ollama evidence did not match a unique original source span; saved results were preserved.')
+    return text[start:start + len(quote)]
+
+
 async def propose(units, url, model):
     proposals = []
     async with httpx.AsyncClient(timeout=httpx.Timeout(float(os.getenv('OLLAMA_TIMEOUT_SECONDS','600')), connect=10)) as client:
@@ -209,8 +225,9 @@ async def propose(units, url, model):
                     action['quote']=allowed[source_id]['text']
             result = Proposals.model_validate(data)
             for proposal in result.actions:
-                if proposal.source_id not in allowed or proposal.quote not in allowed[proposal.source_id]['text']:
+                if proposal.source_id not in allowed:
                     raise InvalidExtraction('Ollama returned an invalid source ID or quote; saved results were preserved.')
+                proposal.quote = restore_source_quote(proposal.quote, allowed[proposal.source_id]['text'])
             proposals.extend(result.actions)
     return proposals
 
