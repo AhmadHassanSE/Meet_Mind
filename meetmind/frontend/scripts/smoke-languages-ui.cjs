@@ -4,6 +4,7 @@ const { chromium } = require('playwright');
 const fs = require('node:fs');
 const path = require('node:path');
 const assert = require('node:assert/strict');
+const { ACCESS, sessionData } = require('./smoke-session.cjs');
 (async () => {
   const root = path.resolve(__dirname, '..');
   const html = fs.readFileSync(path.join(root, 'dist/index.html'), 'utf8');
@@ -11,7 +12,7 @@ const assert = require('node:assert/strict');
   const text = 'ہاں بالکل علی، میں دو بجے تک نیا بلڈ ٹیسٹ سرور پر اپ لوڈ کر دوں گی۔';
   let submitted;
   const meeting = { id: 'language-ui', title: 'اردو پروجیکٹ میٹنگ', status: 'uploaded', model: null,
-    source_type: 'text', actions: [], original_transcript: transcript,
+    source_type: 'text', actions: [], original_transcript: transcript, access: ACCESS,
     language_profile: { label: 'Urdu script' },
     segments: [{ id: 1, text, source: text, speaker: 'سارا' }],
     preprocessing: { source_count: 8, utterance_count: 1, duplicate_section_removed: false, warnings: [] } };
@@ -23,6 +24,8 @@ const assert = require('node:assert/strict');
     await page.route('http://meetmind.test/**', async route => {
       const request = route.request(), pathname = new URL(request.url()).pathname;
       if (pathname.startsWith('/api/')) {
+        const session = sessionData(request.url());
+        if (session !== undefined) return route.fulfill({ json: session });
         let data;
         if (pathname === '/api/health') data = { ollama: 'ready', model: 'local-fixture', bert: { status: 'checkpoint available' } };
         else if (pathname === '/api/meetings' && request.method() === 'POST') { submitted = request.postDataJSON(); data = meeting; }
@@ -34,12 +37,12 @@ const assert = require('node:assert/strict');
         } else data = meeting;
         return route.fulfill({ json: data });
       }
-      if (pathname === '/') return route.fulfill({ body: html, contentType: 'text/html' });
+      if (!pathname.startsWith('/assets/')) return route.fulfill({ body: html, contentType: 'text/html' });
       if (pathname.startsWith('/assets/')) return route.fulfill({ body: fs.readFileSync(path.join(root, 'dist', pathname)), contentType: pathname.endsWith('.css') ? 'text/css' : 'text/javascript' });
       return route.fulfill({ status: 404, body: '' });
     });
     await page.goto('http://meetmind.test/');
-    await page.getByRole('button', { name: 'Upload transcript', exact: true }).click();
+    await page.getByRole('link', { name: 'Upload transcript', exact: true }).click();
     assert.deepEqual(await page.getByLabel('Meeting language').locator('option').evaluateAll(options=>options.map(option=>option.value)), ['auto','en','ur','roman-ur']);
     await page.getByLabel('Meeting language').selectOption('ur');
     await page.getByLabel('Meeting title').fill(meeting.title);

@@ -90,6 +90,10 @@ def test_first_account_bootstraps_admin_and_later_accounts_are_members(team):
     assert TestClient(main.app).post('/api/auth/signup', json={
         'email': 'late@example.com', 'name': 'Late', 'password': 'another long password'}).status_code == 403
     assert TestClient(main.app).get('/api/auth/config').json() == {'has_users': True, 'signup_open': False}
+    created = admin.post('/api/admin/users', json={'email': 'late@example.com', 'name': 'Late', 'password': 'initial password 1', 'role': 'organizer'})
+    assert created.status_code == 201 and created.json()['role'] == 'organizer'
+    assert team['sara'][0].post('/api/admin/users', json={'email': 'x@example.com', 'name': 'X', 'password': 'initial password 1'}).status_code == 403
+    assert TestClient(main.app).post('/api/auth/login', json={'email': 'late@example.com', 'password': 'initial password 1'}).status_code == 200
 
 
 def test_login_logout_lockout_and_csrf_header(team):

@@ -4,7 +4,7 @@ import json
 import os
 from pathlib import Path
 from uuid import uuid4
-from app import main, review
+from app import auth, main, review
 
 
 def main_check():
@@ -14,7 +14,13 @@ def main_check():
     if not os.environ.get('MEETMIND_DB'):
         raise ValueError('Set MEETMIND_DB to a dedicated test database before seeding')
     text = 'Sara: I will send the report by Friday.\nAli: We should book the room.\nAli: Cancel the budget report.'
-    meeting = main.create_meeting(main.MeetingInput(title='Review browser fixture ' + str(uuid4()), transcript=text))
+    # The fixture belongs to the workspace admin the browser smoke signed up as.
+    with main.connect() as connection:
+        row = connection.execute("SELECT * FROM users WHERE is_admin=1 AND role='organizer' ORDER BY created_at LIMIT 1").fetchone()
+    if not row:
+        raise ValueError('Run smoke-ui.cjs first so the test database has an admin organizer')
+    meeting = main.create_meeting(main.MeetingInput(title='Review browser fixture ' + str(uuid4()), transcript=text), auth.to_user(row))
+    meeting.pop('access')
     def item(task, kind, source, quote):
         return {'task': task, 'owner': 'Sara' if kind == 'commitment' else None,
                 'deadline': 'by Friday' if kind == 'commitment' else None,

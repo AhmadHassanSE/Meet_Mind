@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Video, Square, X, ArrowRight } from 'lucide-react';
+import { apiFetch } from './api';
 
 type BotSession = { id: string; title: string; meeting_url: string; state: string; message: string;
   recorded_bytes: number; uploaded_chunks: number; remote_tracks: number; elapsed_seconds?: number;
@@ -9,7 +10,7 @@ type BotSession = { id: string; title: string; meeting_url: string; state: strin
 type Capabilities = { playwright_installed: boolean; ffmpeg_available: boolean };
 const terminal = new Set(['completed', 'failed', 'cancelled']);
 async function api<T>(path: string, body?: object): Promise<T> {
-  const response = await fetch(`/api/meet/bots${path}`, body ? {
+  const response = await apiFetch(`/api/meet/bots${path}`, body ? {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : undefined);
   const data = await response.json();
   if (!response.ok) throw new Error(typeof data.detail === 'string' ? data.detail : 'Check the Meet link, title and recording confirmation.');

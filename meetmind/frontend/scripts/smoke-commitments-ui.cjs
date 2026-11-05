@@ -1,6 +1,7 @@
 // Run against dedicated test services/database; uses the real local NLP pipeline.
 const { chromium } = require('playwright');
 const assert = require('node:assert/strict');
+const { signIn } = require('./smoke-session.cjs');
 const fs = require('node:fs');
 const cases = [
   { name: 'Promise and deadline', text: 'Sara: I will send the project report by Friday.' },
@@ -13,10 +14,10 @@ const cases = [
     const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
-    await page.goto(process.env.MEETMIND_UI_URL || 'http://127.0.0.1:5173');
+    await signIn(page, process.env.MEETMIND_UI_URL || 'http://127.0.0.1:5173');
     for (const fixture of cases) {
       const title = `Commitment check ${fixture.name} ${Date.now()}`;
-      await page.getByRole('button', { name: 'Upload transcript', exact: true }).click();
+      await page.getByRole('link', { name: 'Upload transcript', exact: true }).click();
       await page.getByLabel('Meeting title').fill(title);
       await page.getByRole('textbox', { name: /^Transcript/ }).fill(fixture.text);
       await page.getByRole('button', { name: 'Process meeting', exact: true }).click();
@@ -53,6 +54,9 @@ const cases = [
       assert.equal(saved.needs_review, false);
       assert.deepEqual(saved.evidence, task.evidence);
       await page.reload();
+      // Meetings have their own URL now; reload stays on the meeting, then return to the library.
+      await page.getByRole('heading', { name: 'Transcript evidence' }).waitFor();
+      await page.getByRole('button', { name: '← All meetings' }).click();
       await page.getByRole('heading', { name: 'Meeting library', exact: true }).waitFor();
       await page.locator('.meeting').filter({ hasText: title }).click();
       await page.locator(`[data-id="${task.id}"]`).waitFor();

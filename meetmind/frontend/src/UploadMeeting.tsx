@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowRight, Upload, FileText, Mic, Video, X, CheckCircle2 } from 'lucide-react';
+import { apiFetch } from './api';
 
 type Job = { id: string; status: string; progress: number; message: string; meeting_id: string | null };
 const formats = {
@@ -47,7 +48,7 @@ export function UploadMeeting({ onReady }: { onReady: (id: string) => Promise<vo
     const controller = new AbortController();
     async function poll() {
       try {
-        const response = await fetch(`/api/ingestion/jobs/${jobId}`, { signal: controller.signal });
+        const response = await apiFetch(`/api/ingestion/jobs/${jobId}`, { signal: controller.signal });
         if (response.status === 404) {
           if (!stopped) { localStorage.removeItem('meetmind-ingestion-job'); setJobId(null); setError('This job no longer exists. Upload your recording again.'); }
           return;
@@ -87,13 +88,13 @@ export function UploadMeeting({ onReady }: { onReady: (id: string) => Promise<vo
     submitting.current = true; setBusy(true); setError(''); setJob(null);
     try {
       if (tab === 'text') {
-        const meeting = await readResponse(await fetch('/api/meetings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title, transcript: text, input_language: language }) }));
+        const meeting = await readResponse(await apiFetch('/api/meetings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title, transcript: text, input_language: language }) }));
         await onReady(meeting.id);
       } else {
         if (!file) throw new Error('Choose a file first.');
         const body = new FormData(); body.append('title', title); body.append('file', file); body.append('input_language', language);
         const media = tab === 'audio' || tab === 'recording';
-        const result = await readResponse(await fetch(`/api/ingestion/${media ? 'media' : 'transcript'}`, { method: 'POST', body }));
+        const result = await readResponse(await apiFetch(`/api/ingestion/${media ? 'media' : 'transcript'}`, { method: 'POST', body }));
         if (media) { localStorage.setItem('meetmind-ingestion-job', result.id); setJob(result); setJobId(result.id); }
         else await onReady(result.id);
       }

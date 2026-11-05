@@ -283,6 +283,10 @@ class SignupInput(Credentials):
     password: str = Field(min_length=10, max_length=256)
 
 
+class NewUser(SignupInput):
+    role: Literal['member', 'organizer'] = 'member'
+
+
 class ProfileInput(BaseModel):
     model_config = ConfigDict(extra='forbid', str_strip_whitespace=True)
     name: str | None = Field(default=None, min_length=1, max_length=100)
@@ -477,6 +481,19 @@ def build_router():
     def users(admin: User = Depends(admin_user)):
         with connect() as connection:
             return [public_row(row) for row in connection.execute('SELECT * FROM users ORDER BY created_at')]
+
+    @router.post('/admin/users', status_code=201)
+    def create_user(data: NewUser, admin: User = Depends(admin_user)):
+        """Accounts for closed sign-up; the admin shares the initial password out of band."""
+        with connect() as connection:
+            connection.execute('BEGIN IMMEDIATE')
+            if connection.execute('SELECT 1 FROM users WHERE email=?', (data.email,)).fetchone():
+                raise HTTPException(409, 'An account with this email already exists')
+            user_id = str(uuid4())
+            connection.execute('INSERT INTO users (id,email,name,password_hash,role,created_at) VALUES (?,?,?,?,?,?)',
+                               (user_id, data.email, data.name.strip(), hash_password(data.password), data.role, stamp()))
+            audit(connection, admin, 'account_created', user_id, {'role': data.role, 'by_admin': True})
+            return public_row(user_row(connection, user_id))
 
     @router.patch('/admin/users/{user_id}')
     def update_user(user_id: str, data: UserUpdate, admin: User = Depends(admin_user)):

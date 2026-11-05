@@ -1,13 +1,14 @@
 // Real built UI; API/model responses mocked. No servers or external messages.
 const {chromium}=require('playwright');
 const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
+const {ACCESS,RIGHTS,sessionData}=require('./smoke-session.cjs');
 (async()=>{
   const root=path.resolve(__dirname,'..');
   const html=fs.readFileSync(path.join(root,'dist/index.html'),'utf8');
   const commitment={id:'commit-1',revision:1,task:'Send the report',owner:'Sara',deadline:'Friday',
     kind:'commitment',review_status:'approved',status:'approved',needs_review:false,source_id:1,
     evidence:[{quote:'I will send the report by Friday.',source_ids:[1]}]};
-  const meeting={id:'meeting-1',title:'Artifact UI fixture',status:'extracted',model:'fixture',actions:[commitment],
+  const meeting={id:'meeting-1',title:'Artifact UI fixture',status:'extracted',model:'fixture',actions:[commitment],access:ACCESS,
     segments:[{id:1,speaker:'Sara',text:'I will send the report by Friday.',source:'I will send the report by Friday.'}]};
   let draft=null,create;
   const browser=await chromium.launch({channel:'chrome',headless:true});
@@ -17,6 +18,8 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
     await page.route('http://127.0.0.1:5199/**',async route=>{
       const req=route.request(),name=new URL(req.url()).pathname;
       if(name.startsWith('/api/')){
+        const session=sessionData(req.url());
+        if(session!==undefined)return route.fulfill({json:session});
         let data;
         if(name==='/api/health')data={ollama:'offline',bert:{status:'not loaded'}};
         else if(name==='/api/meetings')data=[meeting];
@@ -25,7 +28,7 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
           create=req.postDataJSON();
           draft={id:'draft-1',meeting_id:meeting.id,meeting_title:meeting.title,status:'draft',revision:1,
             to:create.to,subject:'Report follow-up',body:'Please send the report by Friday.',model:'fixture',
-            approval_valid:false,source_current:true,source:commitment,policy:{can_approve:true,violations:[]},history:[]};
+            approval_valid:false,source_current:true,source:commitment,policy:{can_approve:true,violations:[]},history:[],approval:null,rights:RIGHTS};
           data=draft;
         }else if(name==='/api/artifacts')data=draft ? [draft]:[];
         else if(name.endsWith('/review')){
@@ -39,7 +42,7 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
         else return route.fulfill({status:404,json:{detail:'Unexpected API request'}});
         return route.fulfill({json:data});
       }
-      if(name==='/')return route.fulfill({body:html,contentType:'text/html'});
+      if(!name.startsWith('/assets/'))return route.fulfill({body:html,contentType:'text/html'});
       if(name.startsWith('/assets/'))return route.fulfill({body:fs.readFileSync(path.join(root,'dist',name)),
         contentType:name.endsWith('.css')?'text/css':'text/javascript'});
       return route.fulfill({status:404});
@@ -69,7 +72,7 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
     await page.screenshot({path:path.join(root,'runs/artifacts-mobile.png'),fullPage:true});
     await page.reload();
-    await page.getByRole('button',{name:'Follow-up drafts',exact:true}).click();
+    await page.getByRole('link',{name:'Follow-up drafts',exact:true}).click();
     await page.getByRole('button',{name:/Report follow-up/}).click();
     await page.waitForFunction(()=>document.querySelector('textarea[aria-label="Message"]')?.value==='Please send the updated report by Friday.');
     assert.equal(await page.getByLabel('Message',{exact:true}).inputValue(),'Please send the updated report by Friday.');

@@ -2,14 +2,15 @@
 // Requires Google Chrome installed. Override MEETMIND_UI_URL for a different port.
 const { chromium } = require('playwright');
 const assert = require('node:assert/strict');
+const { signIn } = require('./smoke-session.cjs');
 (async () => {
   const browser = await chromium.launch({ channel: 'chrome', headless: true });
   try {
     const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
-    await page.goto(process.env.MEETMIND_UI_URL || 'http://127.0.0.1:5173');
-    await page.getByRole('button', { name: 'Upload transcript' }).click();
+    await signIn(page, process.env.MEETMIND_UI_URL || 'http://127.0.0.1:5173');
+    await page.getByRole('link', { name: 'Upload transcript' }).click();
     await page.getByRole('tab', { name: 'Transcript file' }).click();
     const title = `UI fixture ${Date.now()}`;
     await page.getByLabel('Meeting title').fill(title);
@@ -19,6 +20,9 @@ const assert = require('node:assert/strict');
     await page.getByText('#1 · Sara · 1.0s – 3.0s', { exact: true }).waitFor();
     await page.getByRole('link', { name: 'VTT', exact: true }).waitFor();
     await page.reload();
+    // Meetings have their own URL now; reload stays on the meeting, then return to the library.
+    await page.getByRole('heading', { name: 'Transcript evidence' }).waitFor();
+    await page.getByRole('button', { name: '← All meetings' }).click();
     await page.getByRole('button', { name: new RegExp(title) }).click();
     await page.getByRole('heading', { name: 'Transcript evidence' }).waitFor();
     if (process.env.MEETMIND_BERT_SMOKE === '1') {
@@ -27,6 +31,9 @@ const assert = require('node:assert/strict');
       assert.equal(await page.locator('.dialogue-results article').count(), 1);
       await page.getByText(/Model score \d/).waitFor();
       await page.reload();
+      // Meetings have their own URL now; reload stays on the meeting, then return to the library.
+      await page.getByRole('heading', { name: 'Transcript evidence' }).waitFor();
+      await page.getByRole('button', { name: '← All meetings' }).click();
       await page.getByRole('button', { name: new RegExp(title) }).click();
       await page.locator('.dialogue-results article').first().waitFor();
       await page.setViewportSize({ width: 390, height: 844 });
@@ -34,7 +41,7 @@ const assert = require('node:assert/strict');
       await page.setViewportSize({ width: 1440, height: 1000 });
       console.log('Real BERT inference, result persistence and mobile layout verified through the browser.');
     }
-    await page.getByRole('button', { name: 'Upload transcript' }).click();
+    await page.getByRole('link', { name: 'Upload transcript' }).click();
     for (const name of ['Audio', 'Meeting recording']) {
       await page.getByRole('tab', { name, exact: true }).click();
       const transcriptionHelp = page.getByLabel('Local transcription information', { exact: true });

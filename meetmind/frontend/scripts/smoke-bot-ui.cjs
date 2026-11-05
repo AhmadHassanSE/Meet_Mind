@@ -3,6 +3,7 @@ const { chromium } = require('playwright');
 const fs = require('node:fs');
 const path = require('node:path');
 const assert = require('node:assert/strict');
+const { sessionData } = require('./smoke-session.cjs');
 (async () => {
   const root = path.resolve(__dirname, '..');
   const html = fs.readFileSync(path.join(root, 'dist/index.html'), 'utf8');
@@ -15,6 +16,8 @@ const assert = require('node:assert/strict');
     await page.route('http://meetmind.test/**', async route => {
       const request = route.request(), pathname = new URL(request.url()).pathname;
       if (pathname.startsWith('/api/')) {
+        const session = sessionData(request.url());
+        if (session !== undefined) return route.fulfill({ json: session });
         let data;
         if (pathname === '/api/health') data = { ollama: 'offline', bert: { status: 'not loaded' } };
         else if (pathname.endsWith('/capabilities')) data = { playwright_installed: true, ffmpeg_available: true };
@@ -31,12 +34,12 @@ const assert = require('node:assert/strict');
         else data = { ...record, state, meeting_id: state === 'completed' ? 'saved-fixture' : null };
         return route.fulfill({ json: data });
       }
-      if (pathname === '/') return route.fulfill({ body: html, contentType: 'text/html' });
+      if (!pathname.startsWith('/assets/')) return route.fulfill({ body: html, contentType: 'text/html' });
       if (pathname.startsWith('/assets/')) return route.fulfill({ body: fs.readFileSync(path.join(root, 'dist', pathname)), contentType: pathname.endsWith('.css') ? 'text/css' : 'text/javascript' });
       return route.fulfill({ status: 404, body: '' });
     });
     await page.goto('http://meetmind.test/');
-    await page.getByRole('button', { name: 'Google Meet bot', exact: true }).click();
+    await page.getByRole('link', { name: 'Google Meet bot', exact: true }).click();
     await page.getByLabel('Google Meet link').fill('https://meet.google.com/abc-defg-hij');
     assert.equal(await page.getByRole('button', { name: 'Send bot to meeting' }).isDisabled(), true);
     await page.getByRole('checkbox').check();

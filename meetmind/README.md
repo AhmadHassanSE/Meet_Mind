@@ -6,6 +6,17 @@ Fresh implementation. The sibling `meeting-transcription-agent` directory is ref
 
 The integrated branch combines multilingual ingestion, commitment review, the Meet extension/browser bot, and BERT experiment tooling. [Follow-up drafting and separate approval](backend/ARTIFACTS.md) now use local Ollama and LangGraph. Drafts are persisted and editable; this checkpoint does not send email. Follow that guide for the integrated checkout and existing-model/profile configuration.
 
+## Accounts and roles
+
+Every page and API route needs a signed-in user. The first account created in a
+new database becomes the workspace **admin** and an **organizer**, and existing
+local meetings are assigned to it. Later accounts are **members** until an admin
+approves their organizer request. Organizers create and review meetings and link
+each action item to its **owner** account. The owner then approves that item's
+follow-up draft. The Chrome extension needs a capture token from **Account**.
+See [backend/AUTH.md](backend/AUTH.md) for the permission matrix, sessions,
+tokens and audit trail.
+
 ## Run locally (two PowerShell terminals)
 
 Prerequisites: Node.js, uv, Python 3.13 (uv can provision it), FFmpeg on PATH, and Ollama running with `llama3.2:latest` installed. Run the commands below from the repository root in separate terminals.

@@ -2,6 +2,7 @@
 const { chromium } = require('playwright');
 const fs = require('node:fs');
 const assert = require('node:assert/strict');
+const { signIn } = require('./smoke-session.cjs');
 (async () => {
   const fixtures = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
   const browser = await chromium.launch({ channel: 'chrome', headless: true });
@@ -10,9 +11,9 @@ const assert = require('node:assert/strict');
     const page = await browser.newPage({ viewport: { width: 1440, height: 1100 } });
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
-    await page.goto(process.env.MEETMIND_UI_URL || 'http://127.0.0.1:5173');
+    await signIn(page, process.env.MEETMIND_UI_URL || 'http://127.0.0.1:5173');
     for (const [index, fixture] of fixtures.entries()) {
-      await page.getByRole('button', { name: 'Upload transcript', exact: true }).click();
+      await page.getByRole('link', { name: 'Upload transcript', exact: true }).click();
       await page.getByRole('tab', { name: 'Transcript file', exact: true }).click();
       const title = `BERT audit ${index + 1} ${fixture.name} ${Date.now()}`;
       await page.getByLabel('Meeting title').fill(title);
@@ -40,6 +41,9 @@ const assert = require('node:assert/strict');
         await page.locator('.dialogue-results .mint').filter({ hasText: 'target text truncated' }).first().waitFor();
       }
       await page.reload();
+      // Meetings have their own URL now; reload stays on the meeting, then return to the library.
+      await page.getByRole('heading', { name: 'Transcript evidence' }).waitFor();
+      await page.getByRole('button', { name: '← All meetings' }).click();
       await page.getByRole('button', { name: new RegExp(title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')) }).click();
       await page.locator('.dialogue-results article').first().waitFor();
       assert.equal(await page.locator('.dialogue-results article').count(), fixture.segments);

@@ -1,6 +1,7 @@
 // Real API persistence with deterministic synthetic extraction fixtures; no model required.
 const { chromium } = require('playwright');
 const assert = require('node:assert/strict');
+const { signIn } = require('./smoke-session.cjs');
 const fs = require('node:fs');
 (async () => {
   const fixture = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
@@ -9,7 +10,7 @@ const fs = require('node:fs');
     const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
-    await page.goto(process.env.MEETMIND_UI_URL || 'http://127.0.0.1:5173');
+    await signIn(page, process.env.MEETMIND_UI_URL || 'http://127.0.0.1:5173');
     await page.locator('.meeting').filter({ hasText: fixture.title }).click();
     const first = page.locator(`[data-id="${fixture.actions[0].id}"]`);
     const save = async (card, button) => {
@@ -46,6 +47,9 @@ const fs = require('node:fs');
     assert.equal(await cancellation.getByRole('button', { name: /Approve/ }).count(), 0);
     await save(cancellation, 'Reject');
     await page.reload();
+    // Meetings have their own URL now; reload stays on the meeting, then return to the library.
+    await page.getByRole('heading', { name: 'Transcript evidence' }).waitFor();
+    await page.getByRole('button', { name: '← All meetings' }).click();
     await page.locator('.meeting').filter({ hasText: fixture.title }).click();
     await first.getByRole('heading', { name: 'Send final report', exact: true }).waitFor();
     assert.equal(await first.getAttribute('data-status'), 'rejected');

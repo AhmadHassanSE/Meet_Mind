@@ -60,7 +60,9 @@ Approvals record `approved_by`, and every history entry records `actor_id` and
 2. Meetings created before accounts existed are assigned to the first admin as
    organizer, at sign-up and at every startup.
 3. **Admin → Settings** can close open sign-up. New accounts are members until
-   an admin approves their organizer request.
+   an admin approves their organizer request. With sign-up closed, admins
+   create accounts under **Admin → Users** and share the initial password
+   directly.
 
 ## API
 
@@ -74,7 +76,7 @@ Approvals record `approved_by`, and every history entry records `actor_id` and
 | `GET/POST/DELETE /api/meetings/{id}/members` | View / meeting organizer |
 | `DELETE /api/meetings/{id}` | Meeting organizer |
 | `GET /api/artifacts?awaiting_me=true` | Drafts the caller must decide |
-| `/api/admin/users`, `/api/admin/organizer-requests`, `/api/admin/audit`, `/api/admin/settings`, `POST /api/admin/meetings/{id}/organizer` | Admin |
+| `GET/POST /api/admin/users`, `PATCH /api/admin/users/{id}`, `/api/admin/organizer-requests`, `/api/admin/audit`, `/api/admin/settings`, `POST /api/admin/meetings/{id}/organizer` | Admin |
 
 ## Not included yet
 
