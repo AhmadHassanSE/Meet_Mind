@@ -94,6 +94,25 @@ def test_complete_capture_uses_shared_transcription_and_provenance(client):
     assert client.post('/api/meet/bots/'+bot_id+'/stop').status_code==409
 
 
+@pytest.mark.real_auth
+def test_bot_uploads_as_its_starter_with_a_revoked_short_lived_token(client):
+    client.headers.update({'X-Requested-With':'meetmind'})
+    owner=client.post('/api/auth/signup',json={'email':'host@example.com','name':'Host','password':'correct horse battery'}).json()
+    bot_id=client.post('/api/meet/bots',json=input_data()).json()['id']
+    await_state(client,bot_id,{'recording'})
+    client.post('/api/meet/bots/'+bot_id+'/stop')
+    record=await_state(client,bot_id,{'completed'})
+    meeting=client.get('/api/meetings/'+record['meeting_id']).json()
+    assert meeting['created_by']==owner['id'] and meeting['access']['role']=='organizer'
+    with main.connect() as connection:
+        token=connection.execute("SELECT revoked, scope FROM api_tokens WHERE name=?",('meet-bot:'+bot_id,)).fetchone()
+    assert token['scope']=='capture' and token['revoked']==1
+    stranger=TestClient(main.app,headers={'X-Requested-With':'meetmind'})
+    stranger.post('/api/auth/signup',json={'email':'guest@example.com','name':'Guest','password':'correct horse battery'})
+    assert stranger.get('/api/meet/bots/'+bot_id).status_code==404 and stranger.get('/api/meet/bots').json()==[]
+    assert stranger.post('/api/meet/bots',json=input_data()).status_code==403
+
+
 def test_manual_login_cancel_and_cleanup(client):
     FakeBrowser.wait_login=True
     bot_id=client.post('/api/meet/bots',json=input_data()).json()['id']

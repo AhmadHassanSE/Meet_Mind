@@ -11,17 +11,19 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Literal
 from uuid import uuid4
 
 import httpx
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form
+from fastapi import Depends, FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.responses import Response
 from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 from .ingestion import IngestionError, parse_text, parse_transcript, docx_text, MAX_TEXT_BYTES
 from .preprocessing import prepare
 from .media import AUDIO_FORMATS, VIDEO_FORMATS, MAX_MEDIA_BYTES, MODEL_NAME, ffmpeg_path, transcribe_media
-from . import bert, commitments, review, languages, artifacts
+from . import auth, bert, commitments, review, languages, artifacts
+from .auth import User
 from .connectors import meet, bot
 
 DB_PATH = Path(os.getenv("MEETMIND_DB", str(Path(__file__).parents[1] / "meetmind.db")))
@@ -36,6 +38,9 @@ slots = threading.BoundedSemaphore(3)
 async def lifespan(application):
     with connect() as connection:
         connection.execute("UPDATE ingestion_jobs SET status='failed', message='Server restarted. Upload the recording again.' WHERE status NOT IN ('completed', 'failed')")
+        admin = connection.execute('SELECT id FROM users WHERE is_admin=1 AND active=1 ORDER BY created_at LIMIT 1').fetchone()
+        if admin:
+            auth.claim_orphans(connection, admin['id'])
     meet.fail_stale()
     bot_manager.recover()
     artifact_service.recover()
@@ -46,13 +51,22 @@ async def lifespan(application):
 app = FastAPI(title="MeetMind", version="0.2.0", lifespan=lifespan)
 
 
+migrated = set()
+
+
 @contextmanager
 def connect():
     connection = sqlite3.connect(DB_PATH)
     connection.row_factory = sqlite3.Row
-    connection.execute("CREATE TABLE IF NOT EXISTS meetings (id TEXT PRIMARY KEY, payload TEXT NOT NULL)")
-    connection.execute("CREATE TABLE IF NOT EXISTS ingestion_jobs (id TEXT PRIMARY KEY, status TEXT, progress INTEGER, message TEXT, meeting_id TEXT)")
-    artifacts.schema(connection)
+    if DB_PATH not in migrated:
+        connection.execute("CREATE TABLE IF NOT EXISTS meetings (id TEXT PRIMARY KEY, payload TEXT NOT NULL)")
+        connection.execute("CREATE TABLE IF NOT EXISTS ingestion_jobs (id TEXT PRIMARY KEY, status TEXT, progress INTEGER, message TEXT, meeting_id TEXT)")
+        if 'user_id' not in {row['name'] for row in connection.execute('PRAGMA table_info(ingestion_jobs)')}:
+            connection.execute('ALTER TABLE ingestion_jobs ADD COLUMN user_id TEXT')
+        artifacts.schema(connection)
+        auth.schema(connection)
+        connection.commit()
+        migrated.add(DB_PATH)
     try:
         with connection:
             yield connection
@@ -72,10 +86,30 @@ def segments_from_text(text):
     return parse_text(text)
 
 
+auth.connect = connect
+
+
 def save(meeting):
     with connect() as connection:
         connection.execute("INSERT OR REPLACE INTO meetings VALUES (?, ?)",
                            (meeting["id"], json.dumps(meeting)))
+        if meeting.get('created_by'):
+            auth.add_organizer(connection, meeting['id'], meeting['created_by'])
+
+
+def authorize(meeting_id, user, organize=False):
+    """Raise 404 for invisible meetings and 403 for view-only access."""
+    with connect() as connection:
+        result = (auth.require_organize if organize else auth.require_view)(connection, meeting_id, user)
+        if result['role'] == 'admin':
+            auth.audit(connection, user, 'admin_viewed_meeting', meeting_id)
+    return result
+
+
+def present(meeting, user):
+    """Attach the caller's rights; not persisted."""
+    with connect() as connection:
+        return {**meeting, 'access': auth.access(connection, meeting['id'], user)}
 
 
 def get_meeting(meeting_id):
@@ -92,16 +126,17 @@ def get_meeting(meeting_id):
 
 
 @app.post('/api/meetings/{meeting_id}/commitments/{item_id}/review')
-def review_commitment(meeting_id: str, item_id: str, data: review.ReviewInput):
+def review_commitment(meeting_id: str, item_id: str, data: review.ReviewInput, user: User = Depends(auth.current_user)):
     with connect() as connection:
         connection.execute('BEGIN IMMEDIATE')
+        auth.require_organize(connection, meeting_id, user)
         row = connection.execute('SELECT payload FROM meetings WHERE id = ?', (meeting_id,)).fetchone()
         if not row:
             raise HTTPException(404, 'Meeting not found')
         meeting = json.loads(row['payload'])
         review.initialize(meeting)
         try:
-            review.apply(meeting, item_id, data)
+            review.apply(meeting, item_id, data, user)
         except LookupError as error:
             raise HTTPException(404, str(error)) from error
         except RuntimeError as error:
@@ -110,7 +145,7 @@ def review_commitment(meeting_id: str, item_id: str, data: review.ReviewInput):
             raise HTTPException(422, str(error)) from error
         connection.execute('UPDATE meetings SET payload = ? WHERE id = ?', (json.dumps(meeting), meeting_id))
         artifacts.invalidate(connection,meeting_id,item_id)
-    return meeting
+    return present(meeting, user)
 
 
 @app.get("/api/health")
@@ -131,14 +166,16 @@ async def health():
 
 
 @app.get("/api/meetings")
-def meetings():
+def meetings(user: User = Depends(auth.current_user)):
     with connect() as connection:
-        rows = connection.execute("SELECT payload FROM meetings ORDER BY rowid DESC").fetchall()
-    return [json.loads(row["payload"]) for row in rows]
+        visible = auth.visible_meeting_ids(connection, user)
+        rows = connection.execute("SELECT id, payload FROM meetings ORDER BY rowid DESC").fetchall()
+        return [{**json.loads(row["payload"]), 'access': auth.access(connection, row['id'], user)}
+                for row in rows if visible is None or row['id'] in visible]
 
 
 @app.post("/api/meetings", status_code=201)
-def create_meeting(data: MeetingInput):
+def create_meeting(data: MeetingInput, user: User = Depends(auth.organizer_user)):
     if not data.title.strip() or not data.transcript.strip():
         raise HTTPException(422, "Title and transcript cannot be blank")
     try:
@@ -151,13 +188,15 @@ def create_meeting(data: MeetingInput):
     meeting = {"id": str(uuid4()), "title": data.title.strip(), "transcript": data.transcript,
                "segments": segments, "actions": [], "status": "uploaded", "model": None,
                "source_type": "text", "filename": None, **prepared,
-               'input_language': data.input_language, 'language_profile': languages.profile(segments, data.input_language)}
+               'input_language': data.input_language, 'language_profile': languages.profile(segments, data.input_language),
+               'created_by': user.id}
     save(meeting)
-    return meeting
+    return present(meeting, user)
 
 
 @app.post("/api/ingestion/transcript", status_code=201)
-async def upload_transcript(title: str = Form(..., min_length=1, max_length=200), file: UploadFile = File(...), input_language: languages.Language = Form('auto')):
+async def upload_transcript(title: str = Form(..., min_length=1, max_length=200), file: UploadFile = File(...), input_language: languages.Language = Form('auto'),
+                            user: User = Depends(auth.organizer_user)):
     try:
         if not title.strip():
             raise IngestionError("Meeting title cannot be blank")
@@ -170,19 +209,23 @@ async def upload_transcript(title: str = Form(..., min_length=1, max_length=200)
                    "transcript": "\n".join(item["source"] for item in segments),
                    "segments": segments, "actions": [], "status": "uploaded", "model": None,
                    "source_type": suffix.lstrip("."), "filename": Path(file.filename or "").name, **prepared,
-                   'input_language': input_language, 'language_profile': languages.profile(prepared['segments'], input_language)}
+                   'input_language': input_language, 'language_profile': languages.profile(prepared['segments'], input_language),
+                   'created_by': user.id}
         save(meeting)
-        return meeting
+        return present(meeting, user)
     except IngestionError as error:
         raise HTTPException(422, str(error)) from error
     finally:
         await file.close()
 
 
-def update_job(job_id, status, progress, message, meeting_id=None):
+def update_job(job_id, status, progress, message, meeting_id=None, user_id=None):
+    # The creating user is recorded once and preserved by later progress updates.
     with connect() as connection:
-        connection.execute("INSERT OR REPLACE INTO ingestion_jobs VALUES (?, ?, ?, ?, ?)",
-                           (job_id, status, progress, message, meeting_id))
+        connection.execute("INSERT INTO ingestion_jobs (id, status, progress, message, meeting_id, user_id) VALUES (?, ?, ?, ?, ?, ?) "
+                           "ON CONFLICT(id) DO UPDATE SET status=excluded.status, progress=excluded.progress, "
+                           "message=excluded.message, meeting_id=excluded.meeting_id",
+                           (job_id, status, progress, message, meeting_id, user_id))
 
 
 def submit_job(run):
@@ -204,9 +247,137 @@ app.include_router(bot.build_router(bot_manager))
 artifact_service = artifacts.Service(connect,OLLAMA_URL,
     lambda meeting: MULTILINGUAL_MODEL if languages.needs_translation(meeting) else OLLAMA_MODEL)
 app.include_router(artifacts.build_router(artifact_service))
+app.include_router(auth.build_router())
 
 
-def run_media_job(job_id, title, filename, path, input_language='auto'):
+class AssigneeInput(BaseModel):
+    revision: int = Field(ge=0)
+    user_id: str | None = Field(default=None, max_length=64)
+
+
+class MemberInput(BaseModel):
+    user_id: str = Field(min_length=1, max_length=64)
+    role: Literal['organizer', 'viewer'] = 'viewer'
+
+
+class OrganizerInput(BaseModel):
+    user_id: str = Field(min_length=1, max_length=64)
+
+
+def active_user(connection, user_id):
+    row = connection.execute('SELECT * FROM users WHERE id=? AND active=1', (user_id,)).fetchone()
+    if not row:
+        raise HTTPException(422, 'Choose an active MeetMind user')
+    return row
+
+
+@app.put('/api/meetings/{meeting_id}/commitments/{item_id}/assignee')
+def assign_owner(meeting_id: str, item_id: str, data: AssigneeInput, user: User = Depends(auth.current_user)):
+    """Link an item to a registered owner. The spoken ``owner`` text is kept as evidence."""
+    with connect() as connection:
+        connection.execute('BEGIN IMMEDIATE')
+        auth.require_organize(connection, meeting_id, user)
+        meeting = json.loads(connection.execute('SELECT payload FROM meetings WHERE id = ?', (meeting_id,)).fetchone()['payload'])
+        review.initialize(meeting)
+        item = next((i for i in meeting.get('actions', []) + meeting.get('action_candidates', []) if i['id'] == item_id), None)
+        if item is None:
+            raise HTTPException(404, 'Commitment not found')
+        if item['revision'] != data.revision:
+            raise HTTPException(409, 'This item changed. Reload the meeting before assigning it.')
+        if item.get('kind') == 'cancellation':
+            raise HTTPException(422, 'A cancellation statement cannot have an owner')
+        target = active_user(connection, data.user_id) if data.user_id else None
+        before = item.get('assignee')
+        item['assignee'] = {'id': target['id'], 'name': target['name'], 'email': target['email']} if target else None
+        item['revision'] += 1
+        item.setdefault('review_history', []).append({
+            'revision': item['revision'], 'at': auth.stamp(), 'decision': 'assigned' if target else 'unassigned',
+            'note': f"Owner account: {target['name']} <{target['email']}>" if target else 'Owner account removed',
+            'before': {'assignee': before}, 'after': {'assignee': item['assignee']},
+            'reviewer': user.label, 'reviewer_id': user.id})
+        meeting['commitment_revision'] = meeting.get('commitment_revision', 0) + 1
+        if target:
+            connection.execute('INSERT OR REPLACE INTO assignments VALUES (?,?,?,?,?)',
+                               (meeting_id, item_id, target['id'], user.id, auth.stamp()))
+        else:
+            connection.execute('DELETE FROM assignments WHERE meeting_id=? AND item_id=?', (meeting_id, item_id))
+        connection.execute('UPDATE meetings SET payload = ? WHERE id = ?', (json.dumps(meeting), meeting_id))
+        # A different owner means a different approver: earlier approvals no longer apply.
+        artifacts.invalidate(connection, meeting_id, item_id)
+    return present(meeting, user)
+
+
+@app.get('/api/meetings/{meeting_id}/members')
+def members(meeting_id: str, user: User = Depends(auth.current_user)):
+    with connect() as connection:
+        auth.require_view(connection, meeting_id, user)
+        rows = connection.execute(
+            "SELECT u.id, u.name, u.email, m.role AS role FROM meeting_members m JOIN users u ON u.id=m.user_id WHERE m.meeting_id=? "
+            "UNION SELECT u.id, u.name, u.email, 'owner' FROM assignments a JOIN users u ON u.id=a.user_id "
+            'WHERE a.meeting_id=? AND a.user_id NOT IN (SELECT user_id FROM meeting_members WHERE meeting_id=?) '
+            'ORDER BY role, name COLLATE NOCASE',
+            (meeting_id, meeting_id, meeting_id)).fetchall()
+    return [dict(row) for row in rows]
+
+
+@app.post('/api/meetings/{meeting_id}/members', status_code=201)
+def add_member(meeting_id: str, data: MemberInput, user: User = Depends(auth.current_user)):
+    with connect() as connection:
+        connection.execute('BEGIN IMMEDIATE')
+        auth.require_organize(connection, meeting_id, user)
+        target = active_user(connection, data.user_id)
+        if data.role == 'organizer' and target['role'] != 'organizer':
+            raise HTTPException(422, 'Only users with the organizer role can co-organize a meeting')
+        connection.execute('INSERT OR REPLACE INTO meeting_members VALUES (?,?,?,?,?)',
+                           (meeting_id, target['id'], data.role, user.id, auth.stamp()))
+        auth.audit(connection, user, 'meeting_member_added', meeting_id, {'user_id': target['id'], 'role': data.role})
+    return members(meeting_id, user)
+
+
+@app.delete('/api/meetings/{meeting_id}/members/{user_id}', status_code=204)
+def remove_member(meeting_id: str, user_id: str, user: User = Depends(auth.current_user)):
+    with connect() as connection:
+        connection.execute('BEGIN IMMEDIATE')
+        auth.require_organize(connection, meeting_id, user)
+        organizers = {row[0] for row in connection.execute(
+            "SELECT user_id FROM meeting_members WHERE meeting_id=? AND role='organizer'", (meeting_id,))}
+        if organizers == {user_id}:
+            raise HTTPException(409, 'A meeting needs at least one organizer')
+        if not connection.execute('DELETE FROM meeting_members WHERE meeting_id=? AND user_id=?', (meeting_id, user_id)).rowcount:
+            raise HTTPException(404, 'Member not found')
+        auth.audit(connection, user, 'meeting_member_removed', meeting_id, {'user_id': user_id})
+
+
+@app.delete('/api/meetings/{meeting_id}', status_code=204)
+def delete_meeting(meeting_id: str, user: User = Depends(auth.current_user)):
+    """Remove the meeting with its drafts, members and assignments (scope 2.3)."""
+    with connect() as connection:
+        connection.execute('BEGIN IMMEDIATE')
+        auth.require_organize(connection, meeting_id, user)
+        for table in ('artifacts', 'meeting_members', 'assignments'):
+            connection.execute(f'DELETE FROM {table} WHERE meeting_id=?', (meeting_id,))
+        connection.execute('DELETE FROM meetings WHERE id=?', (meeting_id,))
+        auth.audit(connection, user, 'meeting_deleted', meeting_id)
+
+
+@app.post('/api/admin/meetings/{meeting_id}/organizer')
+def reassign_organizer(meeting_id: str, data: OrganizerInput, admin: User = Depends(auth.admin_user)):
+    """Hand a meeting to another organizer, e.g. after a role is revoked."""
+    with connect() as connection:
+        connection.execute('BEGIN IMMEDIATE')
+        if not connection.execute('SELECT 1 FROM meetings WHERE id=?', (meeting_id,)).fetchone():
+            raise HTTPException(404, 'Meeting not found')
+        target = active_user(connection, data.user_id)
+        if target['role'] != 'organizer':
+            raise HTTPException(422, 'Grant the organizer role first')
+        connection.execute("DELETE FROM meeting_members WHERE meeting_id=? AND role='organizer'", (meeting_id,))
+        connection.execute('INSERT OR REPLACE INTO meeting_members VALUES (?,?,?,?,?)',
+                           (meeting_id, target['id'], 'organizer', admin.id, auth.stamp()))
+        auth.audit(connection, admin, 'meeting_organizer_reassigned', meeting_id, {'user_id': target['id']})
+    return {'meeting_id': meeting_id, 'organizer_id': target['id']}
+
+
+def run_media_job(job_id, title, filename, path, input_language='auto', user_id=None):
     try:
         update = lambda status, progress, message: update_job(job_id, status, progress, message)
         segments, metadata = transcribe_media(path, update) if input_language=='auto' else transcribe_media(path, update, language=input_language)
@@ -216,7 +387,7 @@ def run_media_job(job_id, title, filename, path, input_language='auto'):
                    "segments": segments, "actions": [], "status": "uploaded", "model": None,
                    "source_type": "video" if path.suffix in VIDEO_FORMATS else "audio",
                    "filename": filename, **metadata, **prepared, 'input_language': input_language,
-                   'language_profile': languages.profile(prepared['segments'], input_language)}
+                   'language_profile': languages.profile(prepared['segments'], input_language), 'created_by': user_id}
         save(meeting)
         update_job(job_id, "completed", 100, "Transcript ready", meeting["id"])
     except IngestionError as error:
@@ -232,7 +403,8 @@ def run_media_job(job_id, title, filename, path, input_language='auto'):
 
 
 @app.post("/api/ingestion/media", status_code=202)
-async def upload_media(title: str = Form(..., min_length=1, max_length=200), file: UploadFile = File(...), input_language: languages.Language = Form('auto')):
+async def upload_media(title: str = Form(..., min_length=1, max_length=200), file: UploadFile = File(...), input_language: languages.Language = Form('auto'),
+                       user: User = Depends(auth.organizer_user)):
     directory = None
     acquired = False
     submitted = False
@@ -259,8 +431,8 @@ async def upload_media(title: str = Form(..., min_length=1, max_length=200), fil
         if not total:
             raise HTTPException(422, "Recording is empty")
         job_id = str(uuid4())
-        update_job(job_id, "queued", 0, "Waiting for local transcription")
-        executor.submit(run_media_job, job_id, title.strip(), Path(file.filename or "recording").name, path, input_language)
+        update_job(job_id, "queued", 0, "Waiting for local transcription", user_id=user.id)
+        executor.submit(run_media_job, job_id, title.strip(), Path(file.filename or "recording").name, path, input_language, user.id)
         submitted = True
         return {"id": job_id, "status": "queued", "progress": 0, "message": "Waiting for local transcription", "meeting_id": None}
     finally:
@@ -273,17 +445,19 @@ async def upload_media(title: str = Form(..., min_length=1, max_length=200), fil
 
 
 @app.get("/api/ingestion/jobs/{job_id}")
-def ingestion_job(job_id: str):
+def ingestion_job(job_id: str, user: User = Depends(auth.principal)):
+    # Capture tokens may poll their own transcription jobs.
     with connect() as connection:
         row = connection.execute("SELECT * FROM ingestion_jobs WHERE id=?", (job_id,)).fetchone()
-    if not row:
+    if not row or (row['user_id'] != user.id and not user.is_admin):
         raise HTTPException(404, "Ingestion job not found")
     return dict(row)
 
 
 @app.get("/api/meetings/{meeting_id}")
-def detail(meeting_id: str):
-    return get_meeting(meeting_id)
+def detail(meeting_id: str, user: User = Depends(auth.current_user)):
+    authorize(meeting_id, user)
+    return present(get_meeting(meeting_id), user)
 
 
 def caption_time(seconds):
@@ -292,7 +466,8 @@ def caption_time(seconds):
 
 
 @app.get("/api/meetings/{meeting_id}/transcript")
-def download_transcript(meeting_id: str, format: str = "txt"):
+def download_transcript(meeting_id: str, format: str = "txt", user: User = Depends(auth.current_user)):
+    authorize(meeting_id, user)
     meeting = get_meeting(meeting_id)
     if format == "json":
         body, content_type = json.dumps({key: meeting[key] for key in ('title', 'segments', 'source_segments', 'original_transcript', 'preprocessing') if key in meeting}, ensure_ascii=False), "application/json"
@@ -332,7 +507,8 @@ def extraction_batches(segments):
 
 
 @app.post("/api/meetings/{meeting_id}/classify")
-async def classify_dialogue(meeting_id: str):
+async def classify_dialogue(meeting_id: str, user: User = Depends(auth.current_user)):
+    authorize(meeting_id, user, organize=True)
     meeting = get_meeting(meeting_id)
     try:
         result = await languages.classify(meeting, bert.classify, OLLAMA_URL, MULTILINGUAL_MODEL)
@@ -350,11 +526,12 @@ async def classify_dialogue(meeting_id: str):
         meeting = json.loads(row['payload'])
         meeting['dialogue_analysis'] = result
         connection.execute('UPDATE meetings SET payload = ? WHERE id = ?', (json.dumps(meeting), meeting_id))
-    return meeting
+    return present(meeting, user)
 
 
 @app.post("/api/meetings/{meeting_id}/extract")
-async def extract(meeting_id: str):
+async def extract(meeting_id: str, user: User = Depends(auth.current_user)):
+    authorize(meeting_id, user, organize=True)
     meeting = get_meeting(meeting_id)
     if review.has_reviews(meeting):
         raise HTTPException(409, 'This meeting has reviewed items. Upload a new copy to run extraction again without losing decisions.')
@@ -384,4 +561,4 @@ async def extract(meeting_id: str):
         if current.get('commitment_revision', 0) != previous_revision or review.has_reviews(current):
             raise HTTPException(409, 'Meeting changed during extraction. Reload to keep the latest results and reviews.')
         connection.execute('UPDATE meetings SET payload = ? WHERE id = ?', (json.dumps(meeting), meeting_id))
-    return meeting
+    return present(meeting, user)

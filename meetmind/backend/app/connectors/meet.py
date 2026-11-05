@@ -9,13 +9,14 @@ from pathlib import Path
 from uuid import uuid4
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from ..ingestion import IngestionError
 from ..media import MAX_MEDIA_BYTES, ffmpeg_path, transcribe_media
 from ..preprocessing import prepare
 from ..languages import Language, profile
+from .. import auth
 from . import diarize
 from .alignment import build_intervals, label_from_intervals, name_clusters, normalize_events, turns_to_intervals
 
@@ -57,9 +58,10 @@ def fail_stale():
         shutil.rmtree(path, ignore_errors=True)
 
 
-def get_session(session_id):
+def get_session(session_id, user):
     session = sessions.get(session_id)
-    if not session:
+    # Another user's session is indistinguishable from a missing one.
+    if not session or session.get('user_id') != user.id:
         raise HTTPException(404, "Meet session not found")
     return session
 
@@ -68,7 +70,7 @@ def build_router(save, update_job, submit_job):
     router = APIRouter(prefix="/api/meet")
 
     @router.post("/sessions", status_code=201)
-    def start(data: SessionInput):
+    def start(data: SessionInput, user: auth.User = Depends(auth.capture_user)):
         if not data.title.strip():
             raise HTTPException(422, "Meeting title cannot be blank")
         if not ffmpeg_path():
@@ -82,12 +84,12 @@ def build_router(save, update_job, submit_job):
                                     "self_name": data.self_name, "started_at_ms": data.started_at_ms,
                                     'input_language': data.input_language,
                                     "next_seq": 0, "bytes": 0, "hint_bytes": 0, "finishing": False,
-                                    'capture_method':data.capture_method,'bot_id':data.bot_id}
+                                    'capture_method':data.capture_method,'bot_id':data.bot_id,'user_id':user.id}
         return {"id": session_id}
 
     @router.post("/sessions/{session_id}/audio")
-    async def audio(session_id: str, seq: int, request: Request):
-        session = get_session(session_id)
+    async def audio(session_id: str, seq: int, request: Request, user: auth.User = Depends(auth.capture_user)):
+        session = get_session(session_id, user)
         body = await request.body()
         if len(body) > MAX_CHUNK_BYTES:
             raise HTTPException(413, "Audio chunk is too large")
@@ -109,8 +111,8 @@ def build_router(save, update_job, submit_job):
             return {"received": session["next_seq"], "duplicate": False}
 
     @router.post("/sessions/{session_id}/hints")
-    def hints(session_id: str, data: HintsInput):
-        session = get_session(session_id)
+    def hints(session_id: str, data: HintsInput, user: auth.User = Depends(auth.capture_user)):
+        session = get_session(session_id, user)
         lines = "".join(json.dumps(event, ensure_ascii=False) + "\n" for event in data.events)
         with lock:
             if session["finishing"]:
@@ -123,8 +125,8 @@ def build_router(save, update_job, submit_job):
         return {"accepted": len(data.events)}
 
     @router.delete("/sessions/{session_id}", status_code=204)
-    def cancel(session_id: str):
-        get_session(session_id)
+    def cancel(session_id: str, user: auth.User = Depends(auth.capture_user)):
+        get_session(session_id, user)
         drop(session_id)
 
     def read_events(session):
@@ -190,7 +192,7 @@ def build_router(save, update_job, submit_job):
                        "filename": None, "meeting_code": session["meeting_code"], **metadata,
                        'capture_method':session.get('capture_method','extension'),'bot_id':session.get('bot_id'),
                        "speaker_labels": labels, "diarization": diarization, "diarization_note": note,
-                       "unattributed_segments": unattributed, **prepared}
+                       "unattributed_segments": unattributed, **prepared, 'created_by': session['user_id']}
             meeting.update(input_language=language, language_profile=profile(meeting['segments'], language))
             save(meeting)
             update_job(job_id, "completed", 100, "Transcript ready", meeting["id"])
@@ -203,8 +205,8 @@ def build_router(save, update_job, submit_job):
             drop(session_id)
 
     @router.post("/sessions/{session_id}/finish", status_code=202)
-    def finish(session_id: str):
-        session = get_session(session_id)
+    def finish(session_id: str, user: auth.User = Depends(auth.capture_user)):
+        session = get_session(session_id, user)
         with lock:
             if session["finishing"]:
                 raise HTTPException(409, "Session is already finishing")
@@ -212,7 +214,7 @@ def build_router(save, update_job, submit_job):
                 raise HTTPException(422, "No audio was received for this session")
             session["finishing"] = True
         job_id = str(uuid4())
-        update_job(job_id, "queued", 0, "Waiting for local transcription")
+        update_job(job_id, "queued", 0, "Waiting for local transcription", user_id=user.id)
         if not submit_job(lambda: run(job_id, session_id, session)):
             session["finishing"] = False
             update_job(job_id, "failed", 0, "Transcription queue is full. Wait for a job to finish.")

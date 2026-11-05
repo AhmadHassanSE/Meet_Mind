@@ -4,6 +4,7 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 from app import main,artifact_graph,artifact_policy,review
+from conftest import TEST_USER
 
 
 @pytest.fixture
@@ -104,7 +105,7 @@ def test_source_race_during_generation_does_not_save_an_approvable_draft(setup,m
     approve(client,meeting)
     async def changing(*args):
         main.review_commitment(meeting['id'],'commitment-1',review.ReviewInput(
-            revision=1,task='Changed task',owner='Sara',deadline='Friday',decision='approved'))
+            revision=1,task='Changed task',owner='Sara',deadline='Friday',decision='approved'),TEST_USER)
         return json.dumps({'subject':'Old task','body':'Old draft'})
     monkeypatch.setattr(artifact_graph,'ollama_draft',changing)
     assert create(client,meeting).status_code==409

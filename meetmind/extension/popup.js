@@ -7,9 +7,11 @@ function setStatus(text, error = false) {
 }
 
 async function loadSettings() {
-  const saved = await chrome.storage.local.get(['backend', 'selfName']);
+  const saved = await chrome.storage.local.get(['backend', 'selfName', 'token']);
   if (saved.backend) $('backend').value = saved.backend;
   if (saved.selfName) $('self').value = saved.selfName;
+  if (saved.token) $('token').value = saved.token;
+  if (saved.backend && saved.token) checkAccount(saved.backend, saved.token).catch(() => {});
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   const code = tab && tab.url ? meetingCode(tab.url) : '';
   $('title').value = code ? `Google Meet ${code} ${new Date().toISOString().slice(0, 10)}` : '';
@@ -30,7 +32,7 @@ function render(current) {
   const busy = ['starting', 'recording', 'processing'].includes(current.state);
   $('start').hidden = busy;
   $('stop').hidden = !(current.state === 'recording');
-  for (const id of ['title', 'self', 'backend']) $(id).disabled = busy;
+  for (const id of ['title', 'self', 'backend', 'token']) $(id).disabled = busy;
   $('warning').textContent = current.warning || '';
   if (current.state === 'recording') setStatus('Recording. Keep this Meet tab open; captions are switched on automatically.');
   else if (current.state === 'starting') setStatus('Starting...');
@@ -46,6 +48,19 @@ async function micGranted() {
   } catch (error) {
     return false;
   }
+}
+
+// Returns the account the token belongs to, or throws with a readable reason.
+async function checkAccount(backend, token) {
+  $('account').textContent = '';
+  const response = await fetch(backend + '/api/auth/me', { headers: { Authorization: 'Bearer ' + token } });
+  if (!response.ok) {
+    $('account').textContent = 'Token invalid, expired or revoked. Create a new one in MeetMind → Account.';
+    throw new Error($('account').textContent);
+  }
+  const me = await response.json();
+  $('account').textContent = `Connected as ${me.name} <${me.email}>`;
+  return me;
 }
 
 async function ensureBackendPermission(origin) {
@@ -72,14 +87,21 @@ async function start() {
   } catch (error) {
     return setStatus('MeetMind backend is not reachable at ' + backend, true);
   }
+  const token = $('token').value.trim();
+  if (!token) return setStatus('Paste a capture token from MeetMind → Account first.', true);
+  try {
+    await checkAccount(backend, token);
+  } catch (error) {
+    return setStatus(error.message, true);
+  }
   if (!(await micGranted())) {
     setStatus('Microphone access is needed once. A permission tab was opened; grant it and press Start again.', true);
     return chrome.tabs.create({ url: chrome.runtime.getURL('permissions.html') });
   }
-  await chrome.storage.local.set({ backend, selfName: $('self').value.trim() });
+  await chrome.storage.local.set({ backend, selfName: $('self').value.trim(), token });
   try {
     const streamId = await chrome.tabCapture.getMediaStreamId({ targetTabId: tab.id });
-    const result = await chrome.runtime.sendMessage({ type: 'start', tabId: tab.id, streamId, backend, title,
+    const result = await chrome.runtime.sendMessage({ type: 'start', tabId: tab.id, streamId, backend, token, title,
       selfName: $('self').value.trim(), meetingCode: code });
     if (!result.ok) setStatus(result.error, true);
   } catch (error) {

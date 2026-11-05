@@ -2,7 +2,7 @@
 import asyncio
 import base64
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import importlib.util
 import json
 import logging
@@ -13,12 +13,13 @@ import time
 from uuid import uuid4
 
 import httpx
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .bot_browser import BrowserBot, BotCancelled
 from ..media import ffmpeg_path
 from ..languages import Language
+from .. import auth
 
 TERMINAL = {'completed','failed','cancelled'}
 PROFILE = Path(os.getenv('MEETMIND_BOT_PROFILE', str(Path(__file__).parents[2]/'.bot-profile')))
@@ -97,11 +98,18 @@ class BotManager:
             connection.execute('UPDATE meeting_bots SET payload=? WHERE id=?',(json.dumps(record),bot_id))
         return record
 
-    def list(self):
+    def list(self,user=None):
         with self.connect() as connection:
             self.database(connection)
             ids=[row['id'] for row in connection.execute('SELECT id FROM meeting_bots ORDER BY rowid DESC LIMIT 30')]
-        return [self.read(bot_id) for bot_id in ids]
+        records=[self.read(bot_id) for bot_id in ids]
+        return [r for r in records if user is None or user.is_admin or r.get('user_id')==user.id]
+
+    def owned(self,bot_id,user):
+        """Starter or admin; other users see the bot as missing."""
+        record=self.read(bot_id)
+        if record.get('user_id')!=user.id and not user.is_admin:raise HTTPException(404,'Meeting bot not found')
+        return record
 
     def recover(self):
         for record in self.list():
@@ -113,7 +121,7 @@ class BotManager:
                 'ffmpeg_available':bool(ffmpeg_path()),'browser':os.getenv('MEETMIND_BOT_BROWSER','chrome'),
                 'max_active_bots':1,'capture':'incoming_webrtc_audio','live_meet_validated':True}
 
-    async def start(self,data):
+    async def start(self,data,user):
         async with self.start_lock:
             if self.tasks:raise HTTPException(429,'A browser bot is already active. Stop or cancel it first.')
             if not self.capabilities()['playwright_installed']:
@@ -122,29 +130,34 @@ class BotManager:
             bot_id=str(uuid4())
             record={'id':bot_id,**data.model_dump(),'state':'queued','message':'Starting an isolated bot browser',
                     'created_at':now(),'updated_at':now(),'events':[],'job_id':None,'meeting_id':None,
-                    'capture_method':'browser_bot','uploaded_chunks':0,'recorded_bytes':0,'remote_tracks':0}
+                    'capture_method':'browser_bot','uploaded_chunks':0,'recorded_bytes':0,'remote_tracks':0,'user_id':user.id}
             with self.connect() as connection:
                 self.database(connection)
                 connection.execute('INSERT INTO meeting_bots VALUES (?,?)',(bot_id,json.dumps(record)))
+                # The bot uploads through the capture API as its starter, with a short-lived token.
+                token=auth.issue_token(connection,user.id,'meet-bot:'+bot_id,
+                                       ttl=timedelta(minutes=data.max_duration_minutes+60))
             control=Control();self.controls[bot_id]=control
-            task=asyncio.create_task(self.run(bot_id,data,control),name='meetmind-bot-'+bot_id)
+            task=asyncio.create_task(self.run(bot_id,data,control,token),name='meetmind-bot-'+bot_id)
             self.tasks[bot_id]=task
             return record
 
-    def command(self,bot_id,command):
-        record=self.read(bot_id)
+    def command(self,bot_id,command,user):
+        record=self.owned(bot_id,user)
         if bot_id not in self.controls or record['state'] in TERMINAL|{'transcribing'}:
             raise HTTPException(409,'This bot is not running; transcription jobs cannot be cancelled here.')
         if command=='resume' and record['state']!='needs_login':raise HTTPException(409,'This bot is not waiting for manual sign-in')
         getattr(self.controls[bot_id],command).set()
         return self.update(bot_id,message={'stop':'Stopping and preparing transcription','cancel':'Cancelling and discarding capture','resume':'Continuing after manual sign-in'}[command])
 
-    async def run(self,bot_id,data,control):
+    async def run(self,bot_id,data,control,token=None):
         browser=self.driver_factory(PROFILE)
         session_id=None
         submitted=False
         seq=0
-        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=self.app),base_url='http://meetmind.internal',timeout=30) as api:
+        headers={'Authorization':'Bearer '+token} if token else {}
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=self.app),base_url='http://meetmind.internal',
+                                     timeout=30,headers=headers) as api:
             async def request(method,path,**kwargs):
                 response=await api.request(method,path,**kwargs)
                 if response.is_error:
@@ -222,6 +235,10 @@ class BotManager:
                 if session_id and not submitted:
                     try:await api.delete(f'/api/meet/sessions/{session_id}')
                     except Exception:logging.exception('Bot capture cleanup failed')
+                if token:
+                    try:
+                        with self.connect() as connection:auth.revoke_token(connection,token)
+                    except Exception:logging.exception('Bot token revocation failed')
                 self.tasks.pop(bot_id,None);self.controls.pop(bot_id,None)
 
     async def shutdown(self):
@@ -237,24 +254,24 @@ def build_router(manager):
     router=APIRouter(prefix='/api/meet/bots')
 
     @router.get('/capabilities')
-    def capabilities():return manager.capabilities()
+    def capabilities(user:auth.User=Depends(auth.current_user)):return manager.capabilities()
 
     @router.get('')
-    def list_bots():return manager.list()
+    def list_bots(user:auth.User=Depends(auth.current_user)):return manager.list(user)
 
     @router.post('',status_code=201)
-    async def start(data:BotInput):return await manager.start(data)
+    async def start(data:BotInput,user:auth.User=Depends(auth.organizer_user)):return await manager.start(data,user)
 
     @router.get('/{bot_id}')
-    def detail(bot_id:str):return manager.read(bot_id)
+    def detail(bot_id:str,user:auth.User=Depends(auth.current_user)):return manager.owned(bot_id,user)
 
     @router.post('/{bot_id}/stop')
-    async def stop(bot_id:str):return manager.command(bot_id,'stop')
+    async def stop(bot_id:str,user:auth.User=Depends(auth.current_user)):return manager.command(bot_id,'stop',user)
 
     @router.post('/{bot_id}/cancel')
-    async def cancel(bot_id:str):return manager.command(bot_id,'cancel')
+    async def cancel(bot_id:str,user:auth.User=Depends(auth.current_user)):return manager.command(bot_id,'cancel',user)
 
     @router.post('/{bot_id}/resume')
-    async def resume(bot_id:str):return manager.command(bot_id,'resume')
+    async def resume(bot_id:str,user:auth.User=Depends(auth.current_user)):return manager.command(bot_id,'resume',user)
 
     return router

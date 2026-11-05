@@ -42,7 +42,7 @@ async function startCapture(request) {
   await setState({ state: 'starting', tabId: request.tabId, title: request.title, error: '', warning: '' }, true);
   await ensureOffscreen();
   const result = await chrome.runtime.sendMessage({ target: 'offscreen', type: 'start', config: {
-    streamId: request.streamId, backend: request.backend, title: request.title,
+    streamId: request.streamId, backend: request.backend, token: request.token, title: request.title,
     selfName: request.selfName, meetingCode: request.meetingCode } });
   if (!result || !result.ok) {
     await setState({ state: 'error', error: (result && result.error) || 'Could not start recording.' });

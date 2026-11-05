@@ -29,7 +29,7 @@ def has_reviews(meeting):
                meeting.get('actions', []) + meeting.get('action_candidates', []))
 
 
-def apply(meeting, item_id, data):
+def apply(meeting, item_id, data, user=None):
     for collection in ('actions', 'action_candidates'):
         item = next((item for item in meeting.get(collection, []) if item['id'] == item_id), None)
         if item is not None:
@@ -57,7 +57,7 @@ def apply(meeting, item_id, data):
     item.setdefault('review_history', []).append({
         'revision': item['revision'], 'at': datetime.now(timezone.utc).isoformat(),
         'decision': data.decision, 'note': data.note, 'before': before, 'after': after,
-        'reviewer': 'local workspace user (identity not authenticated)'})
+        'reviewer': user.label if user else 'system', 'reviewer_id': user.id if user else None})
     if data.decision == 'approved' and collection == 'action_candidates':
         meeting[collection].remove(item)
         meeting.setdefault('actions', []).append(item)

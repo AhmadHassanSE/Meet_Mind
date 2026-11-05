@@ -10,6 +10,7 @@
   #status { margin-top: 10px; padding: 6px 8px; background: #eef2f8; border-radius: 4px; min-height: 1.4em; }
   #status.error { background: #fde7e5; color: #8c1d18; }
   #warning { margin-top: 6px; color: #8a5a00; }
+  .hint { margin-top: 4px; color: #4a4a55; font-size: 12px; }
   .row { display: flex; gap: 8px; }
   a { color: #1a56c4; }
 </style>
@@ -21,6 +22,9 @@
 <input id="self" maxlength="80">
 <label for="backend">MeetMind backend</label>
 <input id="backend" value="http://127.0.0.1:8000">
+<label for="token">Capture token</label>
+<input id="token" type="password" autocomplete="off" placeholder="mmt_… from MeetMind → Account">
+<div id="account" class="hint"></div>
 <div class="row">
   <button id="start">Start recording</button>
   <button id="stop" hidden>Stop and transcribe</button>

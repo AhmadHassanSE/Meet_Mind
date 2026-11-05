@@ -7,6 +7,7 @@ const POLL_MS = 2000;
 
 let state = null;
 let backendUrl = '';
+let accessToken = '';
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -15,7 +16,8 @@ function report(update) {
 }
 
 async function api(path, options = {}) {
-  const response = await fetch(backendUrl + path, options);
+  const headers = { ...(options.headers || {}), Authorization: 'Bearer ' + accessToken };
+  const response = await fetch(backendUrl + path, { ...options, headers });
   if (!response.ok) {
     let detail = '';
     try { detail = (await response.json()).detail || ''; } catch (ignored) { /* non-JSON body */ }
@@ -29,6 +31,7 @@ async function api(path, options = {}) {
 async function start(config) {
   if (state) throw new Error('A capture is already running');
   backendUrl = config.backend;
+  accessToken = config.token;
   state = { ...config, queue: [], seq: 0, hints: [], uploading: false, stopping: false, sessionId: null, failed: false };
   const tabStream = await navigator.mediaDevices.getUserMedia({
     audio: { mandatory: { chromeMediaSource: 'tab', chromeMediaSourceId: config.streamId } }, video: false });
@@ -160,7 +163,8 @@ function fail(message) {
   state.failed = true;
   try { if (state.recorder && state.recorder.state !== 'inactive') state.recorder.stop(); } catch (error) { /* already stopped */ }
   done({ state: 'error', error: message });
-  if (sessionId) fetch(`${backend}/api/meet/sessions/${sessionId}`, { method: 'DELETE' }).catch(() => {});
+  if (sessionId) fetch(`${backend}/api/meet/sessions/${sessionId}`, { method: 'DELETE',
+    headers: { Authorization: 'Bearer ' + accessToken } }).catch(() => {});
 }
 
 function stop() {

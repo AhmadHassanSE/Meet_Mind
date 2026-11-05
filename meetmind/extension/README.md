@@ -6,10 +6,13 @@ Records the audio of a Google Meet tab plus your microphone and sends it to your
 
 1. Start the backend (`uv run uvicorn app.main:app --host 127.0.0.1 --port 8000`, see `meetmind/README.md`). FFmpeg must be on PATH.
 2. Open `chrome://extensions`, enable **Developer mode**, choose **Load unpacked** and select this `extension` folder.
-3. Join a Google Meet in a tab. **Use headphones**: speaker output re-enters your microphone and gets transcribed twice.
-4. Click the MeetMind Capture toolbar icon. The first time, a tab asks for microphone access; grant it and press Start again.
-5. Check the title and your name (Meet shows your own speech as "You"; your name replaces it), then **Start recording**. A red banner appears on the Meet page and the badge shows REC. Captions are switched on automatically; leave them on.
-6. When the meeting ends, press **Stop and transcribe**. Progress is shown in the popup; the meeting then appears in the MeetMind workspace.
+3. Sign in to MeetMind as an **organizer**, open **Account → Capture tokens** and create a token. It is shown once.
+4. Join a Google Meet in a tab. **Use headphones**: speaker output re-enters your microphone and gets transcribed twice.
+5. Click the MeetMind Capture toolbar icon and paste the token. The popup shows which account it belongs to. The first time, a tab asks for microphone access; grant it and press Start again.
+6. Check the title and your name (Meet shows your own speech as "You"; your name replaces it), then **Start recording**. A red banner appears on the Meet page and the badge shows REC. Captions are switched on automatically; leave them on.
+7. When the meeting ends, press **Stop and transcribe**. Progress is shown in the popup; the meeting then appears in the token owner's MeetMind workspace, with them as its organizer.
+
+The token can only upload Meet captures and poll their transcription; it cannot read meetings or approve anything. Revoke it from **Account** if the browser profile is lost.
 
 ## How it works
 
