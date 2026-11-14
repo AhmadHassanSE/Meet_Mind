@@ -1,5 +1,7 @@
 # Real-transcript pilot verification — 10 October 2026
 
+> **Model note (added 14 Nov 2026):** this audit used the **tiny pilot** checkpoint (2-layer BERT, weights `5eadcdca…`), not the selected BERT-base model. Its figures describe the pilot only. Held-out results for BERT-base are in [`../bert-base-test-v1`](../bert-base-test-v1/README.md).
+
 Seven full text files were uploaded and analyzed through the actual BERT endpoint and the browser’s **Analyze with BERT** button. Five are official AMI validation meetings; two are existing workspace transcript reports. No model weights were retrained or tuned during this audit. The final test split was not loaded.
 
 ## Measured classification quality

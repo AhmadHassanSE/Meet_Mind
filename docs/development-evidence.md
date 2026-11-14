@@ -44,7 +44,8 @@ meetings. Corpus-authored labels are not claimed as new team annotations.
 
 Completed a CPU pilot fine-tuning Google's 2-layer/128-hidden BERT on 24,000
 training examples, five epochs, all encoder/head parameters. Best epoch 5:
-validation macro F1 0.4219 versus initial TF-IDF/logistic baseline 0.2989 and
+validation macro F1 0.4219 versus initial TF-IDF/logistic baseline 0.2989 (fit on
+the same 24,000-row pilot sample; the baseline matched to BERT-base is 0.3081) and
 majority 0.0296. Validation accuracy 0.5724. Final test remains unused, reserved
 for the selected full model. See `meetmind/backend/reports/bert-tiny-pilot-v1`
 for provenance, per-class scores, confusion matrix and limitations.
@@ -91,7 +92,7 @@ passed. Compact evidence is in
 ignored. Private transcript text was not pushed. Work remains Codex-assisted at
 Rana's direction under Rana's configured Git identity.
 
-## 10 October 2026 ? transcript preparation
+## 10 October 2026 - transcript preparation
 
 Rana Ahmad directed AI-assisted implementation on `feat/transcript-preprocessing`. Added conservative report cleanup, sentence/token segmentation, speaker/time parsing, exact source lineage, original-text downloads and UI source inspection. First checkpoint: `811aa8a`. Verified 38 backend tests, production build and seven complete API/browser cases. No final test data or new accuracy claim; segmentation changes invalidate direct comparison against old act boundaries. See `meetmind/backend/PREPROCESSING.md` and tracked compact audit evidence. Other members? work is not attributed by these commits.
 
@@ -163,6 +164,14 @@ AI-assisted implementation on `feat/google-meet-integration`, pushed per checkpo
 
 AI-assisted addition on `feat/google-meet-integration`: an optional `diarization` extra runs pyannote.audio (default `pyannote/speaker-diarization-community-1`) on the decoded Meet audio, names its voice clusters from the caption hints, and falls back to caption-hint labels if pyannote, its Hugging Face token or the model access is unavailable. Verified: 84 backend tests passed (alignment and session tests use a fake diarizer; no model was loaded) and the frontend production build passed. The real model was also run once on a 21-second synthetic recording of two Windows text-to-speech voices: it separated two clusters whose turn boundaries matched the script, taking about 24 seconds warm on CPU including model load. This is a functional check on synthetic speech, not an accuracy or speed benchmark. Not yet verified: a real Meet recording, memory and run time on long meetings, and speaker-label accuracy. No accuracy claim is made.
 
-## 19 October 2026 ? Iteration 2 foundation
+## 19 October 2026 - Iteration 2 foundation
 
 Integrated the current non-Meet BERT/multilingual core, teammate Whisper-small update and Meet extension/bot branch in an isolated worktree. Added a local Ollama/LangGraph email-drafting flow, explicit recipients, a small declarative approval policy, persistent revisioned drafts and separate content-bound human approval. Editing a draft or re-reviewing its source invalidates approval. 179 backend tests passed, including concurrency/idempotency/source and policy changes. Built browser checks use mocked APIs; a separate real Ollama/LangGraph smoke passed with synthetic English source data. No external messages were sent; auth/OAuth, delivery and full orchestration remain next work. The prior 0.5293 BERT validation score and pending GPU target are unchanged. AI-assisted implementation requires team review and ownership.
+
+## 5 November 2026 - accounts, roles and approval queue
+
+AI-assisted (Claude Code) on `feat/auth-rbac`: local accounts with scrypt passwords and HttpOnly sessions; Admin, Organizer (admin-approved request), Member and per-item Owner roles; every API route requires sign-in (a test walks the OpenAPI schema); meetings, jobs, captures and bots record their creator; the item owner approves follow-up drafts and admin overrides need a recorded reason; capture tokens for the Chrome extension and a short-lived token for the browser bot. Frontend gained sign-in, role-aware pages, "My approvals", Account and Admin pages. Verified: 197 backend tests passed; browser smoke checks including a new member -> organizer -> owner flow passed against a real backend; GitHub Actions run on `71d9a3d` succeeded.
+
+## 14 November 2026 - held-out BERT test evaluation and rule baseline
+
+Evaluated the frozen BERT-base winner (weights `5a70014d...`) once on the untouched AMI test split (14,882 utterances, 21 meetings): accuracy 0.6632, macro F1 0.5271, weighted F1 0.6623. Same rows: TF-IDF + logistic regression macro F1 0.3264, keyword rules 0.2608 (new `nlp/rules.py`, not fitted to data), majority 0.0330. The 0.73 macro F1 target is not achieved. Details, per-class scores and error analysis: `meetmind/backend/reports/bert-base-test-v1`. Also corrected stale statements in `BERT.md` and labelled the 10 October real-meeting audit as tiny-pilot only. AI-assisted (Claude Code); results come from real runs recorded with their commands.

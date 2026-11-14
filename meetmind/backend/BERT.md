@@ -106,19 +106,21 @@ The test JSONL is never loaded by training. Saved weights use safetensors.
 
 For stronger results, run BERT-base on suitable GPU compute using a fresh
 environment with GPU PyTorch, `transformers>=4.48,<5` and scikit-learn installed.
-The scripts are portable; retain the exact dataset/versioned split. Cloud
-training is optional and has not been performed or authorized to upload private
-meeting data. The checked-in uv CPU source does not install CUDA PyTorch.
+The scripts are portable; retain the exact dataset/versioned split. BERT-base
+was trained on a Google Colab Tesla T4 using only the public AMI corpus (see
+`reports/bert-base-comparison-v1`); no private meeting data was uploaded. The
+checked-in uv CPU source does not install CUDA PyTorch.
 
 Compare learning rates 2e-5, 3e-5 and 5e-5 with independent output directories;
 use additional seeds to assess stability. Keep architecture, data budget and
 configuration in each run record. Only validation may guide these decisions.
 
-An unexecuted [GPU notebook](notebooks/bert_gpu_training.ipynb) prepares the same
-public dataset, trains two BERT-base learning-rate candidates, selects on
-validation only, evaluates the frozen winner and exports model/evidence. It is
-provided for manual execution; no remote training or private-data upload has
-been performed by this implementation.
+The [GPU notebook](notebooks/bert_gpu_training.ipynb) prepares the same public
+dataset, trains two BERT-base learning-rate candidates, selects on validation
+only and exports model/evidence. It was executed manually on Colab to produce
+the 2e-5 and 3e-5 candidates; the committed copy has no saved outputs. The
+held-out test split was evaluated once afterwards, on the frozen 3e-5 winner
+only: see [reports/bert-base-test-v1](reports/bert-base-test-v1/README.md).
 The provided defaults are starting configurations, not a guarantee of optimal
 hyperparameters. Pilot and full-data runs must be labeled separately.
 
