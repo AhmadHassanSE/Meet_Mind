@@ -22,6 +22,8 @@ function sessionData(url) {
   if (pathname === '/api/users/directory') return [{ id: ME.id, name: ME.name, email: ME.email, role: ME.role }];
   if (pathname === '/api/artifacts' && search.includes('awaiting_me')) return [];
   if (pathname.endsWith('/members')) return [{ id: ME.id, name: ME.name, email: ME.email, role: 'organizer' }];
+  if (pathname.endsWith('/workflow')) return { status: 'not_started', drafts: [], history: [], can_control: true,
+    stages: ['extract', 'await_review', 'draft', 'policy_check', 'await_approval', 'execute', 'completed'] };
   return undefined;
 }
 

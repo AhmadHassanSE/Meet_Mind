@@ -10,6 +10,7 @@ from uuid import uuid4
 import httpx
 from fastapi import APIRouter,Depends,HTTPException,Response
 from pydantic import BaseModel,ConfigDict,Field,AfterValidator,field_validator
+from starlette.concurrency import run_in_threadpool
 import re
 from . import artifact_graph,artifact_policy,auth
 
@@ -113,7 +114,19 @@ def invalidate(connection,meeting_id,commitment_id):
 
 
 class Service:
-    def __init__(self,connect,url,model_for):self.connect,self.url,self.model_for=connect,url,model_for
+    def __init__(self,connect,url,model_for):
+        self.connect,self.url,self.model_for=connect,url,model_for
+        self.after_decision=[]  # async callbacks(meeting_id), e.g. the meeting workflow
+
+    def record_delivery(self,artifact_id,delivery):
+        """Store an execution outcome on the draft; content and approval stay unchanged."""
+        with self.connect() as c:
+            c.execute('BEGIN IMMEDIATE')
+            record=self.read(c,artifact_id)
+            record['delivery']={**delivery,'at':now()}
+            event(record,'delivery_'+delivery['status'],delivery.get('detail',''))
+            write(c,record)
+            return record
 
     def source(self,connection,meeting_id,item_id,revision=None):
         row=connection.execute('SELECT payload FROM meetings WHERE id=?',(meeting_id,)).fetchone()
@@ -273,7 +286,9 @@ def build_router(service):
         return service.mutate(artifact_id,data,user)
 
     @router.post('/api/artifacts/{artifact_id}/review')
-    def review(artifact_id:str,data:DecisionInput,user:auth.User=Depends(auth.current_user)):
-        return service.mutate(artifact_id,data,user,decision=True)
+    async def review(artifact_id:str,data:DecisionInput,user:auth.User=Depends(auth.current_user)):
+        result=await run_in_threadpool(service.mutate,artifact_id,data,user,decision=True)
+        for callback in service.after_decision:await callback(result['meeting_id'])
+        return result
 
     return router

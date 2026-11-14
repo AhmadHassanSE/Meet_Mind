@@ -102,6 +102,8 @@ jobs:
           node scripts/smoke-review-ui.cjs review-fixture.json
           uv run --directory ../backend --frozen --no-sync python -m scripts.seed_review_smoke --output ../frontend/roles-fixture.json
           node scripts/smoke-roles-ui.cjs roles-fixture.json
+          uv run --directory ../backend --frozen --no-sync python -m scripts.seed_review_smoke --output ../frontend/workflow-fixture.json
+          node scripts/smoke-workflow-ui.cjs workflow-fixture.json
           node scripts/smoke-languages-ui.cjs
 
           node scripts/smoke-bot-ui.cjs

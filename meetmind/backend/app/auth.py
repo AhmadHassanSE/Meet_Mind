@@ -94,6 +94,12 @@ def to_user(row, scope=None):
     return User(row['id'], row['email'], row['name'], row['role'], bool(row['is_admin']), scope)
 
 
+def load_user(connection, user_id):
+    """Active user by id, or ``None``; used by background work acting for a person."""
+    row = connection.execute('SELECT * FROM users WHERE id=? AND active=1', (user_id,)).fetchone()
+    return to_user(row) if row else None
+
+
 def audit(connection, user, action, target=None, detail=None):
     connection.execute('INSERT INTO audit_log VALUES (?,?,?,?,?,?)', (str(uuid4()), stamp(), user.id if user else None,
                        action, target, json.dumps(detail, ensure_ascii=False) if detail is not None else None))

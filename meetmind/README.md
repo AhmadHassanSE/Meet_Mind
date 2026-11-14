@@ -17,6 +17,10 @@ follow-up draft. The Chrome extension needs a capture token from **Account**.
 See [backend/AUTH.md](backend/AUTH.md) for the permission matrix, sessions,
 tokens and audit trail.
 
+## Meeting workflow
+
+**Start workflow** on a meeting runs a LangGraph process: extraction, then a pause for the organizer's commitment review and recipient choice, drafting, a policy check, and a pause for each owner's approval before anything is executed. Paused runs survive restarts, and failed steps can be retried. See [backend/WORKFLOW.md](backend/WORKFLOW.md).
+
 ## Run locally (two PowerShell terminals)
 
 Prerequisites: Node.js, uv, Python 3.13 (uv can provision it), FFmpeg on PATH, and Ollama running with `llama3.2:latest` installed. Run the commands below from the repository root in separate terminals.

@@ -20,6 +20,7 @@ bot = [
 ]
 agents = [
     "langgraph>=1,<2",
+    "langgraph-checkpoint-sqlite>=3,<4",
 ]
 
 [[tool.uv.index]]

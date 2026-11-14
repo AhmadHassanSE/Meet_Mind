@@ -22,7 +22,7 @@ from pydantic import BaseModel, Field
 from .ingestion import IngestionError, parse_text, parse_transcript, docx_text, MAX_TEXT_BYTES
 from .preprocessing import prepare
 from .media import AUDIO_FORMATS, VIDEO_FORMATS, MAX_MEDIA_BYTES, MODEL_NAME, ffmpeg_path, transcribe_media
-from . import auth, bert, commitments, review, languages, artifacts
+from . import auth, bert, commitments, review, languages, artifacts, workflow
 from .auth import User
 from .connectors import meet, bot
 
@@ -44,6 +44,7 @@ async def lifespan(application):
     meet.fail_stale()
     bot_manager.recover()
     artifact_service.recover()
+    workflow_service.recover()
     yield
     await bot_manager.shutdown()
 
@@ -64,6 +65,7 @@ def connect():
         if 'user_id' not in {row['name'] for row in connection.execute('PRAGMA table_info(ingestion_jobs)')}:
             connection.execute('ALTER TABLE ingestion_jobs ADD COLUMN user_id TEXT')
         artifacts.schema(connection)
+        connection.execute(workflow.SCHEMA)
         auth.schema(connection)
         connection.commit()
         migrated.add(DB_PATH)
@@ -248,6 +250,11 @@ artifact_service = artifacts.Service(connect,OLLAMA_URL,
     lambda meeting: MULTILINGUAL_MODEL if languages.needs_translation(meeting) else OLLAMA_MODEL)
 app.include_router(artifacts.build_router(artifact_service))
 app.include_router(auth.build_router())
+# Workflow checkpoints live beside the main database; resolved per run so tests can swap DB_PATH.
+workflow_service = workflow.WorkflowService(connect, lambda: DB_PATH.with_name(DB_PATH.stem + '.workflow.db'),
+                                           lambda meeting_id: extract_meeting(meeting_id), artifact_service)
+artifact_service.after_decision.append(workflow_service.check)
+app.include_router(workflow.build_router(workflow_service))
 
 
 class AssigneeInput(BaseModel):
@@ -354,7 +361,7 @@ def delete_meeting(meeting_id: str, user: User = Depends(auth.current_user)):
     with connect() as connection:
         connection.execute('BEGIN IMMEDIATE')
         auth.require_organize(connection, meeting_id, user)
-        for table in ('artifacts', 'meeting_members', 'assignments'):
+        for table in ('artifacts', 'meeting_members', 'assignments', 'workflows'):
             connection.execute(f'DELETE FROM {table} WHERE meeting_id=?', (meeting_id,))
         connection.execute('DELETE FROM meetings WHERE id=?', (meeting_id,))
         auth.audit(connection, user, 'meeting_deleted', meeting_id)
@@ -534,6 +541,11 @@ async def classify_dialogue(meeting_id: str, user: User = Depends(auth.current_u
 @app.post("/api/meetings/{meeting_id}/extract")
 async def extract(meeting_id: str, user: User = Depends(auth.current_user)):
     authorize(meeting_id, user, organize=True)
+    return present(await extract_meeting(meeting_id), user)
+
+
+async def extract_meeting(meeting_id):
+    """BERT + spaCy + Ollama extraction; shared by the route and the meeting workflow."""
     meeting = get_meeting(meeting_id)
     if review.has_reviews(meeting):
         raise HTTPException(409, 'This meeting has reviewed items. Upload a new copy to run extraction again without losing decisions.')
@@ -565,4 +577,4 @@ async def extract(meeting_id: str, user: User = Depends(auth.current_user)):
         if current.get('commitment_revision', 0) != previous_revision or review.has_reviews(current):
             raise HTTPException(409, 'Meeting changed during extraction. Reload to keep the latest results and reviews.')
         connection.execute('UPDATE meetings SET payload = ? WHERE id = ?', (json.dumps(meeting), meeting_id))
-    return present(meeting, user)
+    return meeting
