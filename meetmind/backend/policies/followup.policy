@@ -1,6 +1,15 @@
 # Follow-up drafts must pass these rules before explicit approval.
+# See ARTIFACTS.md for every supported rule. Unknown rules fail closed.
 allow channel email
 require approved_commitment
 require explicit_recipients
 require human_approval
-# Optionally restrict recipients, e.g. allow domain company.example
+# Optional examples:
+# allow channel jira
+# allow domain company.example
+# deny domain competitor.example
+# internal domain company.example
+# max recipients 10
+# require approver organizer
+# require sender approver
+# require second_approver for external_domain

@@ -135,7 +135,13 @@ def test_policy_change_revokes_validity_and_domain_rule_blocks_reapproval(setup)
     assert client.post(f"/api/artifacts/{draft['id']}/review",json={'revision':2,'decision':'approved'}).status_code==409
     policy.write_text('allow channel email\nrequire approved_commitment\n')
     with pytest.raises(ValueError):artifact_policy.load()
-    assert client.get('/api/artifacts').status_code==503
+    # An invalid policy blocks approval but no longer hides the drafts.
+    listing=client.get('/api/artifacts')
+    assert listing.status_code==200
+    blocked=listing.json()[0]
+    assert not blocked['policy']['can_approve'] and not blocked['approval_valid']
+    assert 'policy is missing or invalid' in blocked['policy']['violations'][0]
+    assert client.post(f"/api/artifacts/{draft['id']}/review",json={'revision':2,'decision':'approved'}).status_code==409
 
 
 @pytest.mark.parametrize('to',[[],['Name <person@example.com>'],['a@example.com\r\nBcc:other@example.com'],

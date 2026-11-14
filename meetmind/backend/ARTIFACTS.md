@@ -87,31 +87,37 @@ Schema/header/recipient failures return 422. Missing local runtime/model returns
 503; invalid model output returns 502 with a retained failed draft and unchanged
 source. A new request key is required to intentionally retry a failed generation.
 
-## Policy subset
+## Policy rules engine
 
 The server reads `policies/followup.policy` (override with
-`MEETMIND_ARTIFACT_POLICY`). Supported declarative statements:
+`MEETMIND_ARTIFACT_POLICY`). There is one rule per line, and `#` starts a comment.
+Every rule below is evaluated for each draft (`app/artifact_policy.py`):
 
-```text
-allow channel email
-require approved_commitment
-require explicit_recipients
-require human_approval
-# Optional destination restriction:
-# allow domain company.example
-```
+| Rule | Effect |
+|---|---|
+| `allow channel email` / `allow channel jira` | Channels drafts may use; at least one is required |
+| `require approved_commitment` | The draft's source must still be the approved, unchanged commitment |
+| `require explicit_recipients` | Email drafts need people-chosen recipients; the model never chooses them |
+| `require human_approval` | A person must approve the exact content (these three are mandatory) |
+| `allow domain company.example` | If any are listed, every recipient must be in an allowed domain |
+| `deny domain rival.example` | Recipients in a denied domain are always blocked |
+| `internal domain company.example` | Domains (and their subdomains) inside the organization |
+| `max recipients 5` | Upper bound on recipients per draft (1–50) |
+| `require approver owner` / `require approver organizer` | Who decides: the item owner (default; the organizer when no owner is linked), or always the meeting organizer |
+| `require sender approver` | Execution must use the approver's own connected account (used by connectors) |
+| `require second_approver for external_domain` | A recipient outside the internal domains needs two different people to approve. The first approval is kept as partial; the organizer or owner completes it. Editing clears partial approvals. |
 
-All three requirements are mandatory in this checkpoint. Unknown rules fail
-closed; there is no `eval`, Python execution or arbitrary model-supplied policy.
-Changing policy invalidates the validity of previous approvals until reviewed
-under the current policy. This is a deliberately small DSL subset, not a general
-organizational policy language or a completed external execution engine.
+Unknown or malformed rules, a missing mandatory rule, or a second-approver rule
+without an internal domain all fail closed, with the line number in the error.
+There is no `eval`, no Python execution and no model-supplied policy. An approval
+records the policy hash, so changing the policy invalidates earlier approvals
+until they are reviewed again under the new rules. If the policy file is missing
+or invalid, drafts stay visible but every approval is blocked, with the reason
+shown. Tests: `tests/test_policy.py`.
 
-The service is a local single-user prototype. Audit events explicitly identify
-an unauthenticated local workspace user, not a verified organizational identity.
-Bind to loopback. Authentication/authorization must precede any shared deployment
-or connected account execution. Model drafts still need human checks for facts,
-dates, tone and intended recipients; schema validation is not semantic accuracy.
+Audit events record the signed-in user who acted (see `AUTH.md`). Bind to
+loopback for local use. Model drafts still need human checks for facts, dates,
+tone and intended recipients; schema validation is not semantic accuracy.
 
 ## Verification
 

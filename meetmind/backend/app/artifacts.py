@@ -90,14 +90,21 @@ def event(record,action,note='',user=None,**extra):
         'revision':record['revision'],'note':note,'content_sha256':content_hash(record),**auth.actor(user),**extra})
 
 
-def rights(c,record,user):
-    """Organizer or assigned owner may draft/edit; the owner (else organizer) decides."""
+def rights(c,record,user,approver='owner'):
+    """Organizer or assigned owner may draft/edit. The policy's approver rule picks who decides:
+    the owner (organizer when no owner is linked), or always the organizer."""
     meeting_access=auth.require_view(c,record['meeting_id'],user)
     owner=auth.assignee(c,record['meeting_id'],record['source']['commitment_id'])
     edit=meeting_access['can_organize'] or owner==user.id
-    decide=owner==user.id if owner else meeting_access['can_organize']
-    return {'can_edit':edit,'can_decide':decide,'assignee_id':owner,
+    decide=owner==user.id if owner and approver=='owner' else meeting_access['can_organize']
+    return {'can_edit':edit,'can_decide':decide,'assignee_id':owner,'can_organize':meeting_access['can_organize'],
             'can_override':user.is_admin and not decide}
+
+
+def current_policy():
+    """Loaded policy, or an always-blocking result: an invalid file must not hide drafts."""
+    try:return artifact_policy.load()
+    except (OSError,ValueError) as error:return {'invalid':artifact_policy.invalid(error)}
 
 
 def write(connection,record):
@@ -146,13 +153,15 @@ class Service:
         except HTTPException:current=False
         result=deepcopy(record)
         result['source_current']=current
-        result['policy']=artifact_policy.evaluate(record,current,policy())
+        loaded=current_policy()
+        result['policy']=loaded.get('invalid') or artifact_policy.evaluate(record,current,loaded)
         approval=record.get('approval')
         result['approval_valid']=bool(record['status']=='approved' and approval and current and
             approval['revision']==record['revision'] and
             result['policy']['can_approve'] and approval['policy_sha256']==result['policy']['sha256'] and
-            approval['content_sha256']==content_hash(record))
-        if user:result['rights']=rights(connection,record,user)
+            approval['content_sha256']==content_hash(record) and
+            len(approval.get('approvers',[approval]))>=result['policy']['approvals_required'])
+        if user:result['rights']=rights(connection,record,user,result['policy']['approver'])
         return result
 
     def read(self,connection,artifact_id):
@@ -218,9 +227,15 @@ class Service:
         with self.connect() as c:
             c.execute('BEGIN IMMEDIATE')
             record=self.read(c,artifact_id)
-            allowed=rights(c,record,user)
-            if decision and not allowed['can_decide']:
-                if not allowed['can_override']:
+            viewed=self.view(c,record)
+            rule=viewed['policy']
+            allowed=rights(c,record,user,rule['approver'])
+            # A first approval of this exact content waiting for a second, different person.
+            partial=[p for p in record.get('partial_approvals',[]) if p['content_sha256']==content_hash(record)]
+            second=bool(partial) and rule['approvals_required']>1 and (allowed['can_organize'] or allowed['assignee_id']==user.id)
+            eligible=allowed['can_decide'] or second
+            if decision and not eligible:
+                if not user.is_admin:
                     raise HTTPException(403,'Only the item owner (or the organizer when no owner is assigned) can decide this draft')
                 if not data.note:raise HTTPException(422,'Admin override requires a note explaining the reason')
             if not decision and not allowed['can_edit']:
@@ -228,18 +243,31 @@ class Service:
             if record['revision']!=data.revision:raise HTTPException(409,'Draft changed; reload before saving')
             if record['status'] not in {'draft','approved','rejected'}:raise HTTPException(409,'This draft cannot be edited or reviewed; create a new draft')
             if decision:
-                viewed=self.view(c,record)
-                if data.decision=='approved' and not viewed['policy']['can_approve']:
-                    raise HTTPException(409,'; '.join(viewed['policy']['violations']))
-                record.update(status=data.decision,revision=record['revision']+1,approval=None)
-                override=not allowed['can_decide']
-                if data.decision=='approved':record['approval']={'at':now(),'revision':record['revision'],
-                    'content_sha256':content_hash(record),'policy_sha256':viewed['policy']['sha256'],
-                    'approved_by':user.id,'approved_by_label':user.label,'admin_override':override}
-                event(record,data.decision,data.note,user,admin_override=override)
+                if data.decision=='approved' and not rule['can_approve']:
+                    raise HTTPException(409,'; '.join(rule['violations']))
+                override=not eligible
+                if data.decision=='approved':
+                    if any(p['by']==user.id for p in partial):
+                        raise HTTPException(409,'Policy requires a second, different person to approve this draft')
+                    approvers=partial+[{'by':user.id,'label':user.label,'at':now(),
+                                        'content_sha256':content_hash(record),'admin_override':override}]
+                    if len(approvers)<rule['approvals_required']:
+                        record.update(partial_approvals=approvers,revision=record['revision']+1)
+                        event(record,'approved_awaiting_second_approver',data.note,user,admin_override=override)
+                    else:
+                        record.update(status='approved',revision=record['revision']+1,partial_approvals=[])
+                        record['approval']={'at':now(),'revision':record['revision'],
+                            'content_sha256':content_hash(record),'policy_sha256':rule['sha256'],
+                            'approved_by':user.id,'approved_by_label':user.label,'admin_override':override,
+                            'approvers':approvers,'sender_rule':rule['sender']}
+                        event(record,'approved',data.note,user,admin_override=override)
+                else:
+                    record.update(status='rejected',revision=record['revision']+1,approval=None,partial_approvals=[])
+                    event(record,'rejected',data.note,user,admin_override=override)
                 if override:auth.audit(c,user,'admin_override_'+data.decision,record['id'],{'note':data.note})
             else:
-                record.update(**data.model_dump(exclude={'revision'}),status='draft',approval=None,revision=record['revision']+1)
+                record.update(**data.model_dump(exclude={'revision'}),status='draft',approval=None,
+                              partial_approvals=[],revision=record['revision']+1)
                 event(record,'edited','Editing requires a new approval',user)
             write(c,record)
             return self.view(c,record,user)

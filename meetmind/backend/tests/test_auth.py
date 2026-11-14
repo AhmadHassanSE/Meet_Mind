@@ -158,7 +158,8 @@ def test_owner_decides_the_draft_and_admin_override_needs_a_reason(team):
     created = draft(sara, meeting_id)
     assert created.status_code == 201, created.text
     record = created.json()
-    assert record['rights'] == {'can_edit': True, 'can_decide': True, 'assignee_id': sara_user['id'], 'can_override': False}
+    assert record['rights'] == {'can_edit': True, 'can_decide': True, 'assignee_id': sara_user['id'],
+                                'can_organize': False, 'can_override': False}
     assert [d['id'] for d in sara.get('/api/artifacts?awaiting_me=true').json()] == [record['id']]
     assert admin.get('/api/artifacts?awaiting_me=true').json() == []
     assert bilal.get('/api/artifacts/' + record['id']).status_code == 404

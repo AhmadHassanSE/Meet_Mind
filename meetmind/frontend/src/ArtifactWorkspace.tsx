@@ -5,9 +5,10 @@ import { api } from './api';
 type Draft = { id: string; meeting_id: string; meeting_title: string; status: string; revision: number;
   to: string[]; subject: string; body: string; model: string; approval_valid: boolean; source_current: boolean;
   source: { task: string; owner: string | null; deadline: string | null; evidence: { quote: string }[] };
-  policy: { can_approve: boolean; violations: string[] };
+  policy: { can_approve: boolean; violations: string[]; approvals_required: number };
+  partial_approvals?: { by: string; label: string; at: string }[];
   approval: { approved_by_label?: string; admin_override?: boolean } | null;
-  rights: { can_edit: boolean; can_decide: boolean; can_override: boolean; assignee_id: string | null };
+  rights: { can_edit: boolean; can_decide: boolean; can_override: boolean; can_organize: boolean; assignee_id: string | null };
   history: { at: string; action: string; note: string; revision: number; actor?: string; admin_override?: boolean }[] };
 export type DraftSource = { meeting_id: string; commitment: Commitment };
 const labels: Record<string,string> = {drafting:'Generating', draft:'Needs approval', approved:'Approved',
@@ -62,8 +63,11 @@ export function ArtifactWorkspace({source, onMeeting, queue=false}: {source: Dra
   const dirty=Boolean(draft && (to!==draft.to.join(', ') || subject!==draft.subject || body!==draft.body));
   const open=Boolean(draft && ['draft','approved','rejected'].includes(draft.status));
   const editable=open && Boolean(draft?.rights.can_edit);
-  const override=Boolean(draft && !draft.rights.can_decide && draft.rights.can_override);
-  const decidable=open && Boolean(draft && (draft.rights.can_decide || override));
+  // A second, different person (organizer or owner) completes a two-person approval.
+  const partial=draft?.partial_approvals || [];
+  const second=Boolean(draft && partial.length && draft.policy.approvals_required>1 && draft.rights.can_organize);
+  const override=Boolean(draft && !draft.rights.can_decide && !second && draft.rights.can_override);
+  const decidable=open && Boolean(draft && (draft.rights.can_decide || second || override));
   return <><p className="eyebrow">REVIEWED FOLLOW-UP</p><h1>{queue ? 'My approvals' : 'Follow-up drafts'}</h1>
     <p className="muted">{queue ? 'Drafts for action items you own (or organize without an owner) that are waiting for your decision.'
       : 'Create an email from an approved commitment, check its content and recipients, then the item owner approves or rejects the draft. Delivery connections are coming next.'}</p>
@@ -88,6 +92,7 @@ export function ArtifactWorkspace({source, onMeeting, queue=false}: {source: Dra
       {!draft.source_current && <p role="status" className="error">The source commitment changed. Review it in the meeting and create a new draft.</p>}
       {draft.policy.violations.map(reason=><p className="error" key={reason}>{reason}</p>)}
       {draft.approval && draft.status==='approved' && <p className="muted">Approved by {draft.approval.approved_by_label}{draft.approval.admin_override ? ' (admin override)' : ''}</p>}
+      {draft.policy.approvals_required>1 && draft.status!=='approved' && <p className="muted">Policy: a recipient is outside the organization, so two different people must approve.{partial.length ? ` Approved so far by ; waiting for a second approver.` : ''}</p>}
       <form className="form" onSubmit={e=>{e.preventDefault();void save();}}>
         <label>To<input required aria-label="Draft recipients" value={to} onChange={e=>setTo(e.target.value)} disabled={!editable || busy}/></label>
         <label>Subject<input aria-label="Subject" dir="auto" required maxLength={200} value={subject} onChange={e=>setSubject(e.target.value)} disabled={!editable || busy}/></label>
