@@ -4,6 +4,7 @@ from copy import deepcopy
 from datetime import datetime,timezone
 import hashlib
 import json
+import logging
 from typing import Annotated,Literal
 from uuid import uuid4
 
@@ -124,6 +125,36 @@ class Service:
     def __init__(self,connect,url,model_for):
         self.connect,self.url,self.model_for=connect,url,model_for
         self.after_decision=[]  # async callbacks(meeting_id), e.g. the meeting workflow
+        self.executors={}       # channel -> async executor(view) returning a delivery record
+
+    def begin_delivery(self,artifact_id):
+        """Reserve a valid approval for one execution; ``None`` means it was already sent."""
+        with self.connect() as c:
+            c.execute('BEGIN IMMEDIATE')
+            record=self.read(c,artifact_id)
+            state=(record.get('delivery') or {}).get('status')
+            if state=='sent':return None
+            if state=='sending':raise HTTPException(409,'This draft is already being sent')
+            view=self.view(c,record)
+            if view['status']!='approved' or not view['approval_valid']:
+                raise HTTPException(409,'Only a draft with a current, valid approval can be sent')
+            record['delivery']={'status':'sending','at':now()}
+            write(c,record)
+            return view
+
+    async def deliver(self,artifact_id):
+        """Execute an approved draft at most once through its channel's connector."""
+        view=self.begin_delivery(artifact_id)
+        if view is None:
+            with self.connect() as c:return self.read(c,artifact_id)['delivery']
+        executor=self.executors.get(view['channel'])
+        try:
+            delivery=await executor(view) if executor else {'status':'not_configured',
+                'detail':f"No {view['channel']} connector is configured; nothing was sent."}
+        except Exception:
+            logging.exception('Executor failed for draft %s',artifact_id)
+            delivery={'status':'failed','detail':'Unexpected error while sending; check the server log before retrying.'}
+        return self.record_delivery(artifact_id,delivery)['delivery']
 
     def record_delivery(self,artifact_id,delivery):
         """Store an execution outcome on the draft; content and approval stay unchanged."""
@@ -281,6 +312,12 @@ class Service:
                     record.update(status='failed',revision=record['revision']+1)
                     event(record,'draft_failed','Server restarted during generation; create a new draft')
                     write(c,record)
+                elif (record.get('delivery') or {}).get('status')=='sending':
+                    # Unknown outcome: never resend silently.
+                    record['delivery']={'status':'failed','at':now(),'detail':'The server stopped while sending. '
+                        'Check the sender\'s Sent folder before sending again.'}
+                    event(record,'delivery_interrupted',record['delivery']['detail'])
+                    write(c,record)
 
 
 def build_router(service):
@@ -312,6 +349,18 @@ def build_router(service):
     @router.patch('/api/artifacts/{artifact_id}')
     def edit(artifact_id:str,data:EditInput,user:auth.User=Depends(auth.current_user)):
         return service.mutate(artifact_id,data,user)
+
+    @router.post('/api/artifacts/{artifact_id}/send')
+    async def send(artifact_id:str,user:auth.User=Depends(auth.current_user)):
+        """Manual execution of an approved draft by its approver or the meeting organizer."""
+        with service.connect() as c:
+            record=service.read(c,artifact_id)
+            allowed=rights(c,record,user)
+            approver=(record.get('approval') or {}).get('approved_by')
+            if user.id!=approver and not allowed['can_organize']:
+                raise HTTPException(403,'Only the approver or the meeting organizer can send this draft')
+        await service.deliver(artifact_id)
+        with service.connect() as c:return service.view(c,service.read(c,artifact_id),user)
 
     @router.post('/api/artifacts/{artifact_id}/review')
     async def review(artifact_id:str,data:DecisionInput,user:auth.User=Depends(auth.current_user)):

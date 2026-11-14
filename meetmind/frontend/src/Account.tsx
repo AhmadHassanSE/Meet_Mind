@@ -8,8 +8,20 @@ export function Account({ me, onChanged }: { me: Me; onChanged: () => Promise<vo
   const [reason, setReason] = useState(''), [tokenName, setTokenName] = useState('Chrome extension');
   const [tokens, setTokens] = useState<Token[]>([]), [issued, setIssued] = useState('');
   const [message, setMessage] = useState(''), [error, setError] = useState(''), [busy, setBusy] = useState(false);
+  const [gmail, setGmail] = useState<{ configured: boolean; connected: boolean; account: string | null } | null>(null);
   const loadTokens = () => me.role === 'organizer' ? api<Token[]>('/auth/tokens').then(setTokens) : Promise.resolve();
+  const loadGmail = () => api<typeof gmail>('/integrations/gmail').then(setGmail);
   useEffect(() => { void loadTokens().catch(e => setError(e.message)); }, [me.role]);
+  useEffect(() => {
+    void loadGmail().catch(() => {});
+    // Google redirects back here with the outcome of the connection.
+    const outcome = new URLSearchParams(window.location.search).get('gmail');
+    if (outcome) {
+      if (outcome === 'connected') setMessage('Gmail connected. Approved follow-ups can now be sent from your account.');
+      else setError(outcome === 'cancelled' ? 'Gmail connection was cancelled.' : 'Gmail could not be connected. Make sure you allow sending email, then try again.');
+      window.history.replaceState(null, '', '/account');
+    }
+  }, []);
   async function run(action: () => Promise<unknown>, done: string) {
     setBusy(true); setError(''); setMessage('');
     try { await action(); setMessage(done); } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
@@ -29,6 +41,14 @@ export function Account({ me, onChanged }: { me: Me; onChanged: () => Promise<vo
         <label>New password<input required type="password" minLength={10} value={next} onChange={e => setNext(e.target.value)} autoComplete="new-password"/></label>
         <button disabled={busy}>Change password</button>
       </form>
+      <section className="panel form">
+        <h2>Gmail</h2>
+        <p className="muted">Approved follow-up emails are sent from your own Gmail account. MeetMind asks only for permission to send; it cannot read your mail. Nothing is sent without an approval of the exact draft.</p>
+        {!gmail ? <p className="muted">Checking…</p> : !gmail.configured ? <p className="muted">Gmail is not configured on this server yet (an admin sets the Google OAuth client).</p>
+          : gmail.connected ? <div className="row"><span>Connected as <strong>{gmail.account}</strong></span>
+            <button disabled={busy} onClick={() => void run(async () => { await api('/integrations/gmail', 'DELETE'); await loadGmail(); }, 'Gmail disconnected and its access revoked.')}>Disconnect</button></div>
+          : <button className="primary" disabled={busy} onClick={() => void run(async () => { window.location.href = (await api<{ url: string }>('/integrations/gmail/connect', 'POST')).url; }, 'Opening Google…')}>Connect Gmail</button>}
+      </section>
       {me.role === 'member' && <form className="panel form" onSubmit={e => { e.preventDefault(); void run(async () => { await api('/auth/organizer-request', 'POST', { reason }); setReason(''); await onChanged(); }, 'Request sent to the admins.'); }}>
         <h2>Organizer access</h2>
         <p className="muted">Organizers upload and capture meetings, review extracted commitments and assign owners. An admin approves each request.</p>

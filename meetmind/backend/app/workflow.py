@@ -53,15 +53,10 @@ class State(TypedDict, total=False):
     drafts: list
 
 
-async def not_connected(draft):
-    return {'status': 'not_configured', 'detail': f"No {draft['channel']} connector is configured; nothing was sent."}
-
-
 class WorkflowService:
-    def __init__(self, connect, checkpoint_path, extract, artifact_service, executors=None):
+    def __init__(self, connect, checkpoint_path, extract, artifact_service):
         self.connect, self.checkpoint_path = connect, checkpoint_path
         self.extract, self.artifacts = extract, artifact_service
-        self.executors = executors if executors is not None else {}
         self.tasks = {}
 
     # UI-facing status record; graph state itself lives in the checkpointer.
@@ -187,9 +182,8 @@ class WorkflowService:
                 if view['status'] != 'approved' or not view['approval_valid']:
                     deliveries[draft_id] = {'status': 'skipped', 'detail': f"Draft is {view['status']}; nothing was sent."}
                     continue
-                delivery = await self.executors.get(view['channel'], not_connected)(view)
-                self.artifacts.record_delivery(draft_id, delivery)
-                deliveries[draft_id] = delivery
+                # The shared delivery path reserves the draft, so a parallel manual send cannot duplicate it.
+                deliveries[draft_id] = await self.artifacts.deliver(draft_id)
             self.update(meeting_id, 'executed', deliveries=deliveries)
             return {}
 

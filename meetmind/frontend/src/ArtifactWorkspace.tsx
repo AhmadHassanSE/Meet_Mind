@@ -8,6 +8,7 @@ type Draft = { id: string; meeting_id: string; meeting_title: string; status: st
   policy: { can_approve: boolean; violations: string[]; approvals_required: number };
   partial_approvals?: { by: string; label: string; at: string }[];
   approval: { approved_by_label?: string; admin_override?: boolean } | null;
+  delivery?: { status: string; detail?: string; sender?: string; message_id?: string } | null;
   rights: { can_edit: boolean; can_decide: boolean; can_override: boolean; can_organize: boolean; assignee_id: string | null };
   history: { at: string; action: string; note: string; revision: number; actor?: string; admin_override?: boolean }[] };
 export type DraftSource = { meeting_id: string; commitment: Commitment };
@@ -60,6 +61,12 @@ export function ArtifactWorkspace({source, onMeeting, queue=false}: {source: Dra
       setDraft(updated);await refresh();
     } catch(e){setError((e as Error).message);}finally{setBusy(false);}
   }
+  async function send() {
+    if(!draft || busy)return;
+    setBusy(true);setError('');
+    try {setDraft(await api<Draft>(`/artifacts//send`,'POST'));await refresh();}
+    catch(e){setError((e as Error).message);}finally{setBusy(false);}
+  }
   const dirty=Boolean(draft && (to!==draft.to.join(', ') || subject!==draft.subject || body!==draft.body));
   const open=Boolean(draft && ['draft','approved','rejected'].includes(draft.status));
   const editable=open && Boolean(draft?.rights.can_edit);
@@ -92,6 +99,8 @@ export function ArtifactWorkspace({source, onMeeting, queue=false}: {source: Dra
       {!draft.source_current && <p role="status" className="error">The source commitment changed. Review it in the meeting and create a new draft.</p>}
       {draft.policy.violations.map(reason=><p className="error" key={reason}>{reason}</p>)}
       {draft.approval && draft.status==='approved' && <p className="muted">Approved by {draft.approval.approved_by_label}{draft.approval.admin_override ? ' (admin override)' : ''}</p>}
+      {draft.delivery && <p className={draft.delivery.status==='failed' ? 'error' : 'muted'}>Delivery: {draft.delivery.status.replace('_',' ')}{draft.delivery.detail ? ` · ` : ''}</p>}
+      {draft.approval_valid && draft.delivery?.status!=='sent' && draft.delivery?.status!=='sending' && <button className="primary" disabled={busy} onClick={()=>void send()}>{draft.delivery?.status==='failed' ? 'Try sending again' : 'Send now'}</button>}
       {draft.policy.approvals_required>1 && draft.status!=='approved' && <p className="muted">Policy: a recipient is outside the organization, so two different people must approve.{partial.length ? ` Approved so far by ; waiting for a second approver.` : ''}</p>}
       <form className="form" onSubmit={e=>{e.preventDefault();void save();}}>
         <label>To<input required aria-label="Draft recipients" value={to} onChange={e=>setTo(e.target.value)} disabled={!editable || busy}/></label>
@@ -105,7 +114,7 @@ export function ArtifactWorkspace({source, onMeeting, queue=false}: {source: Dra
             <button type="button" disabled={busy || dirty || draft.status==='rejected' || (override && !note.trim())} onClick={()=>void save('rejected')}>Reject draft</button></div></>}
         {open && <p className="muted">{dirty ? 'Save your edits before approving. Changes require a new approval.'
           : !decidable ? 'Only the item owner (or the organizer when no owner is linked) can approve this draft.'
-          : draft.approval_valid ? 'This exact draft is approved. It has not been sent.' : 'Check the recipients, dates and wording before approving.'}</p>}
+          : draft.approval_valid ? (draft.delivery?.status==='sent' ? 'Sent. The approved content was delivered once.' : 'This exact draft is approved. It has not been sent.') : 'Check the recipients, dates and wording before approving.'}</p>}
       </form>
       <button onClick={()=>onMeeting(draft.meeting_id)}>Open source meeting</button>
       <button disabled={busy} onClick={()=>void api<Draft>(`/artifacts/${draft.id}`).then(setDraft).catch(e=>setError(e.message))}>Reload draft</button>

@@ -35,7 +35,7 @@ def env(tmp_path, monkeypatch):
         meeting.update(status='extracted', actions=[dict(ITEM)])
         main.save(meeting)
     monkeypatch.setattr(main.workflow_service, 'extract', fake_extract)
-    monkeypatch.setattr(main.workflow_service, 'executors', {})
+    monkeypatch.setattr(main.artifact_service, 'executors', {})
     return calls
 
 
@@ -173,7 +173,7 @@ def test_executor_runs_once_for_a_valid_approval(team, monkeypatch):
     async def fake_send(draft):
         calls['sent'].append(draft['id'])
         return {'status': 'sent', 'detail': 'fake message id 1'}
-    monkeypatch.setattr(main.workflow_service, 'executors', {'email': fake_send})
+    monkeypatch.setattr(main.artifact_service, 'executors', {'email': fake_send})
     org.post(f'/api/meetings/{meeting_id}/workflow')
     wait(org, meeting_id, waiting_for('commitment_review'), 'review')
     approve_item(org, meeting_id)  # no owner linked: the organizer decides
@@ -193,7 +193,7 @@ def test_rejected_draft_is_never_executed(team, monkeypatch):
     async def fake_send(draft):
         calls['sent'].append(draft['id'])
         return {'status': 'sent'}
-    monkeypatch.setattr(main.workflow_service, 'executors', {'email': fake_send})
+    monkeypatch.setattr(main.artifact_service, 'executors', {'email': fake_send})
     org.post(f'/api/meetings/{meeting_id}/workflow')
     wait(org, meeting_id, waiting_for('commitment_review'), 'review')
     approve_item(org, meeting_id)

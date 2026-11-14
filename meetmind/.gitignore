@@ -12,3 +12,4 @@ backend/runs/
 backend/export/
 backend/.bot-profile/
 frontend/runs/
+*.secret.key
