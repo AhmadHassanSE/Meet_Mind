@@ -24,7 +24,7 @@ from .preprocessing import prepare
 from .media import AUDIO_FORMATS, VIDEO_FORMATS, MAX_MEDIA_BYTES, MODEL_NAME, ffmpeg_path, transcribe_media
 from . import auth, bert, commitments, review, languages, artifacts, workflow
 from .auth import User
-from .connectors import meet, bot, gmail as gmail_connector
+from .connectors import meet, bot, gmail as gmail_connector, jira as jira_connector
 
 DB_PATH = Path(os.getenv("MEETMIND_DB", str(Path(__file__).parents[1] / "meetmind.db")))
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434")
@@ -66,7 +66,7 @@ def connect():
             connection.execute('ALTER TABLE ingestion_jobs ADD COLUMN user_id TEXT')
         artifacts.schema(connection)
         connection.execute(workflow.SCHEMA)
-        for statement in gmail_connector.SCHEMA:
+        for statement in gmail_connector.SCHEMA + jira_connector.SCHEMA:
             connection.execute(statement)
         auth.schema(connection)
         connection.commit()
@@ -261,6 +261,10 @@ app.include_router(workflow.build_router(workflow_service))
 gmail = gmail_connector.Gmail(connect, lambda: DB_PATH.with_name(DB_PATH.stem + '.secret.key'))
 artifact_service.executors['email'] = gmail.send
 app.include_router(gmail_connector.build_router(gmail))
+jira = jira_connector.Jira(connect, lambda: DB_PATH.with_name(DB_PATH.stem + '.secret.key'))
+artifact_service.executors['jira'] = jira.create_issue
+artifact_service.channel_context['jira'] = jira.ticket_context
+app.include_router(jira_connector.build_router(jira))
 
 
 class AssigneeInput(BaseModel):

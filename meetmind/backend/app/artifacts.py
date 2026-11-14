@@ -10,7 +10,7 @@ from uuid import uuid4
 
 import httpx
 from fastapi import APIRouter,Depends,HTTPException,Response
-from pydantic import BaseModel,ConfigDict,Field,AfterValidator,field_validator
+from pydantic import BaseModel,ConfigDict,Field,AfterValidator,field_validator,model_validator
 from starlette.concurrency import run_in_threadpool
 import re
 from . import artifact_graph,artifact_policy,auth
@@ -43,13 +43,30 @@ class Recipients(BaseModel):
         return value
 
 
-class CreateInput(Recipients):
+class ChannelRecipients(BaseModel):
+    """Email needs explicit recipients; a Jira ticket has none (its assignee is the linked owner)."""
+    model_config=ConfigDict(extra='forbid',str_strip_whitespace=True)
+    channel:Literal['email','jira']='email'
+    to:list[Address]=Field(default_factory=list,max_length=10)
+    _unique=field_validator('to')(Recipients.unique.__func__)
+
+    @model_validator(mode='after')
+    def recipients_match_channel(self):
+        if self.channel=='email' and not self.to:raise ValueError('Enter at least one recipient email address')
+        if self.channel=='jira' and self.to:raise ValueError('Jira tickets have no email recipients')
+        return self
+
+
+class CreateInput(ChannelRecipients):
     commitment_id:str=Field(min_length=1,max_length=64)
     commitment_revision:int=Field(ge=0)
     idempotency_key:str=Field(min_length=8,max_length=128)
 
 
-class EditInput(Recipients):
+class EditInput(BaseModel):
+    model_config=ConfigDict(extra='forbid',str_strip_whitespace=True)
+    to:list[Address]=Field(default_factory=list,max_length=10)
+    _unique=field_validator('to')(Recipients.unique.__func__)
     revision:int=Field(ge=0)
     subject:str=Field(min_length=1,max_length=200)
     body:str=Field(min_length=1,max_length=8000)
@@ -82,7 +99,8 @@ def digest(value):return hashlib.sha256(json.dumps(value,sort_keys=True,ensure_a
 
 
 def content_hash(record):
-    return digest({k:record[k] for k in ('channel','to','subject','body','source')})
+    # A Jira ticket's project and assignee are part of what is approved.
+    return digest({k:record[k] for k in ('channel','to','subject','body','source','jira') if k in record or k!='jira'})
 
 
 def event(record,action,note='',user=None,**extra):
@@ -126,6 +144,7 @@ class Service:
         self.connect,self.url,self.model_for=connect,url,model_for
         self.after_decision=[]  # async callbacks(meeting_id), e.g. the meeting workflow
         self.executors={}       # channel -> async executor(view) returning a delivery record
+        self.channel_context={} # channel -> callable(connection, meeting_id, item) -> fields fixed at drafting
 
     def begin_delivery(self,artifact_id):
         """Reserve a valid approval for one execution; ``None`` means it was already sent."""
@@ -220,16 +239,18 @@ class Service:
                     'fingerprint':digest({k:item.get(k) for k in ('task','owner','deadline','evidence')}),
                     'task':item['task'],'owner':item.get('owner'),'deadline':item.get('deadline'),
                     'evidence':deepcopy(item.get('evidence',[]))}
+            extra=self.channel_context[data.channel](c,meeting_id,item) if data.channel in self.channel_context else None
             record={'id':str(uuid4()),'meeting_id':meeting_id,'meeting_title':meeting['title'],
-                    'channel':'email','to':data.to,'subject':'','body':'','source':source,
+                    'channel':data.channel,'to':data.to,'subject':'','body':'','source':source,
                     'status':'drafting','revision':0,'approval':None,'created_at':now(),
                     'request_hash':request_hash,'model':self.model_for(meeting),'history':[]}
+            if extra is not None:record[data.channel]=extra
             event(record,'draft_requested',user=user)
             c.execute('INSERT INTO artifacts VALUES (?,?,?,?)',(record['id'],meeting_id,data.idempotency_key,json.dumps(record)))
         try:
             context={'meeting_title':meeting['title'],'task':source['task'],'owner':source['owner'],
                      'deadline':source['deadline'],'evidence':[{'quote':e.get('quote','')[:2000]} for e in source['evidence'][:3]]}
-            email,steps=await artifact_graph.generate(context,self.url,record['model'])
+            email,steps=await artifact_graph.generate(context,self.url,record['model'],data.channel)
             # Revalidate even if graph is supplied by a future adapter.
             email=artifact_graph.EmailText.model_validate(email).model_dump()
             with self.connect() as c:

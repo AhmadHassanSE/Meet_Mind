@@ -3,17 +3,22 @@ import { api, type Me } from './api';
 
 type UserRow = { id: string; email: string; name: string; role: 'member' | 'organizer'; is_admin: boolean; active: boolean; created_at: string };
 type RoleRequest = { id: string; user_id: string; name: string; email: string; reason: string; status: string; created_at: string; note: string | null };
+type JiraStatus = { connected: boolean; base_url: string | null; project_key: string | null; account: string | null;
+  mapped_users: { user_id: string; name: string; email: string; account_id: string; display_name: string | null }[] };
 type AuditEntry = { id: string; at: string; action: string; actor_email: string | null; target: string | null; detail: unknown };
 
 export function Admin({ me }: { me: Me }) {
-  const [tab, setTab] = useState<'users' | 'requests' | 'audit' | 'settings'>('requests');
+  const [tab, setTab] = useState<'users' | 'requests' | 'audit' | 'settings' | 'jira'>('requests');
+  const [jira, setJira] = useState<JiraStatus | null>(null);
+  const [site, setSite] = useState({ base_url: '', email: '', api_token: '', project_key: '' });
   const [users, setUsers] = useState<UserRow[]>([]), [requests, setRequests] = useState<RoleRequest[]>([]);
   const [audit, setAudit] = useState<AuditEntry[]>([]), [signupOpen, setSignupOpen] = useState(true);
   const [notes, setNotes] = useState<Record<string, string>>({}), [passwords, setPasswords] = useState<Record<string, string>>({});
   const [draft, setDraft] = useState({ name: '', email: '', password: '', role: 'member' as UserRow['role'] });
   const [error, setError] = useState(''), [message, setMessage] = useState(''), [busy, setBusy] = useState(false);
   const load = () => Promise.all([api<UserRow[]>('/admin/users').then(setUsers), api<RoleRequest[]>('/admin/organizer-requests').then(setRequests),
-    api<AuditEntry[]>('/admin/audit').then(setAudit), api<{ signup_open: boolean }>('/admin/settings').then(s => setSignupOpen(s.signup_open))]);
+    api<AuditEntry[]>('/admin/audit').then(setAudit), api<{ signup_open: boolean }>('/admin/settings').then(s => setSignupOpen(s.signup_open)),
+    api<JiraStatus>('/integrations/jira').then(setJira)]);
   useEffect(() => { void load().catch(e => setError(e.message)); }, []);
   async function run(action: () => Promise<unknown>, done: string) {
     setBusy(true); setError(''); setMessage('');
@@ -23,7 +28,7 @@ export function Admin({ me }: { me: Me }) {
   return <><p className="eyebrow">ADMIN</p><h1>Workspace administration</h1>
     <p className="muted">Admins oversee the workspace. Business approvals belong to item owners and organizers; an admin override must be justified and is audited.</p>
     {error && <p role="alert" className="error">{error}</p>}{message && <p role="status" className="mint">{message}</p>}
-    <div className="tabs" role="tablist">{([['requests', `Organizer requests (${requests.length})`], ['users', 'Users'], ['audit', 'Audit log'], ['settings', 'Settings']] as const).map(([id, label]) =>
+    <div className="tabs" role="tablist">{([['requests', `Organizer requests (${requests.length})`], ['users', 'Users'], ['audit', 'Audit log'], ['jira', 'Jira'], ['settings', 'Settings']] as const).map(([id, label]) =>
       <button key={id} role="tab" aria-selected={tab === id} className={tab === id ? 'active' : ''} onClick={() => setTab(id)}>{label}</button>)}</div>
     {tab === 'requests' && <section className="panel">{!requests.length && <p className="muted">No pending organizer requests.</p>}
       {requests.map(r => <article className="admin-row" key={r.id}><div><strong>{r.name}</strong> <small className="muted">{r.email} · {new Date(r.created_at).toLocaleString()}</small><p dir="auto">{r.reason}</p></div>
@@ -48,6 +53,20 @@ export function Admin({ me }: { me: Me }) {
     </tbody></table></section>}
     {tab === 'audit' && <section className="panel">{!audit.length && <p className="muted">No audit events yet.</p>}
       {audit.map(a => <p key={a.id} className="audit-row"><strong>{a.action.replaceAll('_', ' ')}</strong> · {new Date(a.at).toLocaleString()} · {a.actor_email || 'system'}{a.target ? ` · ${a.target}` : ''}{a.detail ? <small className="muted"> · {JSON.stringify(a.detail)}</small> : null}</p>)}
+    </section>}
+    {tab === 'jira' && <section className="panel form"><h2>Jira Cloud</h2>
+      <p className="muted">Approved follow-ups can become Jira tasks. The assignee is the meeting item's linked owner, matched to a Jira account by email. The model never chooses it. Each approved ticket is created once.</p>
+      {jira?.connected ? <><p>Connected to <strong>{jira.base_url}</strong>, project <strong>{jira.project_key}</strong>, as {jira.account}.</p>
+        <div className="review-controls"><button disabled={busy} onClick={() => void run(() => api('/integrations/jira/sync-users', 'POST'), 'Jira users matched by email.')}>Match users by email</button>
+          <button disabled={busy} onClick={() => void run(() => api('/integrations/jira', 'DELETE'), 'Jira disconnected.')}>Disconnect</button></div>
+        <h3>Mapped users ({jira.mapped_users.length})</h3>{jira.mapped_users.length ? jira.mapped_users.map(u => <p key={u.user_id} className="audit-row">{u.name} ({u.email}) → {u.display_name || u.account_id}</p>) : <p className="muted">No users matched yet. Users without exactly one Jira account with the same email stay unassigned.</p>}</>
+        : <form className="form new-user" onSubmit={e => { e.preventDefault(); void run(async () => { await api('/integrations/jira', 'POST', site); setSite({ ...site, api_token: '' }); }, 'Jira connected.'); }}>
+          <div className="row"><input aria-label="Jira site" placeholder="https://your-team.atlassian.net" required value={site.base_url} onChange={e => setSite({ ...site, base_url: e.target.value })}/>
+            <input aria-label="Jira account email" placeholder="Atlassian account email" type="email" required value={site.email} onChange={e => setSite({ ...site, email: e.target.value })}/>
+            <input aria-label="Jira API token" placeholder="API token" type="password" required value={site.api_token} onChange={e => setSite({ ...site, api_token: e.target.value })}/>
+            <input aria-label="Jira project key" placeholder="Project key, e.g. MEET" required value={site.project_key} onChange={e => setSite({ ...site, project_key: e.target.value })}/>
+            <button className="primary" disabled={busy}>Connect</button></div>
+          <small className="muted">Create the token at id.atlassian.com → Security → API tokens. It is stored encrypted and never shown again.</small></form>}
     </section>}
     {tab === 'settings' && <section className="panel form"><h2>Sign-up</h2>
       <label className="check"><input type="checkbox" checked={signupOpen} disabled={busy} onChange={e => void run(() => api('/admin/settings', 'PATCH', { signup_open: e.target.checked }), 'Settings saved.')}/> Allow anyone who can reach this server to create a member account</label>

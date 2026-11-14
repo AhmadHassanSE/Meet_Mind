@@ -2,13 +2,14 @@ import { useEffect, useRef, useState } from 'react';
 import type { Commitment } from './CommitmentResults';
 import { api } from './api';
 
-type Draft = { id: string; meeting_id: string; meeting_title: string; status: string; revision: number;
+type Draft = { id: string; meeting_id: string; meeting_title: string; status: string; revision: number; channel: 'email' | 'jira';
+  jira?: { project_key: string; site: string; assignee_name: string | null; assignee_account_id: string | null };
   to: string[]; subject: string; body: string; model: string; approval_valid: boolean; source_current: boolean;
   source: { task: string; owner: string | null; deadline: string | null; evidence: { quote: string }[] };
   policy: { can_approve: boolean; violations: string[]; approvals_required: number };
   partial_approvals?: { by: string; label: string; at: string }[];
   approval: { approved_by_label?: string; admin_override?: boolean } | null;
-  delivery?: { status: string; detail?: string; sender?: string; message_id?: string } | null;
+  delivery?: { status: string; detail?: string; sender?: string; message_id?: string; url?: string } | null;
   rights: { can_edit: boolean; can_decide: boolean; can_override: boolean; can_organize: boolean; assignee_id: string | null };
   history: { at: string; action: string; note: string; revision: number; actor?: string; admin_override?: boolean }[] };
 export type DraftSource = { meeting_id: string; commitment: Commitment };
@@ -18,7 +19,7 @@ const labels: Record<string,string> = {drafting:'Generating', draft:'Needs appro
 export function ArtifactWorkspace({source, onMeeting, queue=false}: {source: DraftSource | null; onMeeting:(id:string)=>void; queue?: boolean}) {
   const [drafts,setDrafts]=useState<Draft[]>([]), [draft,setDraft]=useState<Draft | null>(null);
   const [recipients,setRecipients]=useState(''), [to,setTo]=useState(''), [subject,setSubject]=useState(''), [body,setBody]=useState('');
-  const [note,setNote]=useState('');
+  const [note,setNote]=useState(''), [channel,setChannel]=useState<'email' | 'jira'>('email');
   const [busy,setBusy]=useState(false), [error,setError]=useState('');
   const requestKey=useRef(crypto.randomUUID());
   const refresh=()=>api<Draft[]>(queue ? '/artifacts?awaiting_me=true' : '/artifacts').then(list=>{
@@ -41,8 +42,8 @@ export function ArtifactWorkspace({source, onMeeting, queue=false}: {source: Dra
     setBusy(true);setError('');
     try {
       const result=await api<Draft>(`/meetings/${source.meeting_id}/artifacts`,'POST',{
-        commitment_id:source.commitment.id,commitment_revision:source.commitment.revision || 0,
-        to:recipients.split(',').map(v=>v.trim()).filter(Boolean),idempotency_key:requestKey.current});
+        commitment_id:source.commitment.id,commitment_revision:source.commitment.revision || 0,channel,
+        to:channel==='email' ? recipients.split(',').map(v=>v.trim()).filter(Boolean) : [],idempotency_key:requestKey.current});
       setDraft(result);await refresh();requestKey.current=crypto.randomUUID();
     } catch(e) {
       setError((e as Error).message);
@@ -80,10 +81,12 @@ export function ArtifactWorkspace({source, onMeeting, queue=false}: {source: Dra
       : 'Create an email from an approved commitment, check its content and recipients, then the item owner approves or rejects the draft. Delivery connections are coming next.'}</p>
     {error && <p role="alert" className="error">{error}</p>}
     {source && !queue && <form className="panel form" onSubmit={e=>{e.preventDefault();void create();}}>
-      <h2>Create follow-up email</h2><p dir="auto">{source.commitment.task}</p>
+      <h2>Create follow-up</h2><p dir="auto">{source.commitment.task}</p>
+      <div className="review-controls" role="radiogroup" aria-label="Follow-up channel">{(['email','jira'] as const).map(value=><label className="check" key={value}><input type="radio" name="channel" checked={channel===value} onChange={()=>{setChannel(value);requestKey.current=crypto.randomUUID();}}/> {value==='email' ? 'Email' : 'Jira ticket'}</label>)}</div>
+      {channel==='jira' ? <small className="muted">The ticket is assigned to the linked owner's Jira account{source.commitment.assignee ? ` ()` : ' (no owner linked: unassigned)'}. An admin connects Jira under Admin → Jira.</small> : <>
       <label>Recipient email addresses<input required value={recipients} onChange={e=>{setRecipients(e.target.value);requestKey.current=crypto.randomUUID();}} placeholder="person@example.com, colleague@example.com" disabled={busy}/></label>
-      <small className="muted">{source.commitment.assignee ? `Suggested from the linked owner account (${source.commitment.assignee.name}). Confirm before generating.` : 'Enter recipients explicitly; an owner\'s name is not an email address.'}</small>
-      <button className="primary" disabled={busy || !recipients.trim()}>{busy ? 'Generating locally…' : 'Generate email draft'}</button>
+      <small className="muted">{source.commitment.assignee ? `Suggested from the linked owner account (${source.commitment.assignee.name}). Confirm before generating.` : 'Enter recipients explicitly; an owner\'s name is not an email address.'}</small></>}
+      <button className="primary" disabled={busy || (channel==='email' && !recipients.trim())}>{busy ? 'Generating locally…' : channel==='jira' ? 'Generate ticket draft' : 'Generate email draft'}</button>
     </form>}
     {!source && !draft && !queue && <p className="muted">Open a meeting, approve a commitment and choose “Draft follow-up” to create an email.</p>}
     <div className="artifact-layout"><section className="panel artifact-list"><div className="row"><h2>{queue ? 'Waiting for you' : 'Saved drafts'}</h2><button onClick={()=>void refresh().catch(e=>setError(e.message))}>Refresh</button></div>
@@ -92,20 +95,21 @@ export function ArtifactWorkspace({source, onMeeting, queue=false}: {source: Dra
         <strong>{item.subject || item.source.task}</strong><small>{item.meeting_title} · {labels[item.status] || item.status}{item.rights.can_decide && item.status==='draft' ? ' · your decision' : ''}</small>
       </button>)}
     </section>
-    {draft && <section className="panel artifact-detail"><div className="row"><h2>Email draft</h2><span className="pill">{draft.status==='approved' && !draft.approval_valid ? 'Approval outdated' : labels[draft.status] || draft.status}</span></div>
+    {draft && <section className="panel artifact-detail"><div className="row"><h2>{draft.channel==='jira' ? 'Jira ticket draft' : 'Email draft'}</h2><span className="pill">{draft.status==='approved' && !draft.approval_valid ? 'Approval outdated' : labels[draft.status] || draft.status}</span></div>
       <p className="muted">Source commitment: <span dir="auto">{draft.source.task}</span></p>
       <p className="muted">Owner: {draft.source.owner || 'Unresolved'} · Due: {draft.source.deadline || 'Unresolved'}</p>
       {draft.source.evidence.map((e,i)=><blockquote dir="auto" key={i}>{e.quote}</blockquote>)}
       {!draft.source_current && <p role="status" className="error">The source commitment changed. Review it in the meeting and create a new draft.</p>}
       {draft.policy.violations.map(reason=><p className="error" key={reason}>{reason}</p>)}
       {draft.approval && draft.status==='approved' && <p className="muted">Approved by {draft.approval.approved_by_label}{draft.approval.admin_override ? ' (admin override)' : ''}</p>}
-      {draft.delivery && <p className={draft.delivery.status==='failed' ? 'error' : 'muted'}>Delivery: {draft.delivery.status.replace('_',' ')}{draft.delivery.detail ? ` · ` : ''}</p>}
-      {draft.approval_valid && draft.delivery?.status!=='sent' && draft.delivery?.status!=='sending' && <button className="primary" disabled={busy} onClick={()=>void send()}>{draft.delivery?.status==='failed' ? 'Try sending again' : 'Send now'}</button>}
+      {draft.delivery && <p className={draft.delivery.status==='failed' ? 'error' : 'muted'}>Delivery: {draft.delivery.status.replace('_',' ')}{draft.delivery.detail ? ` · ` : ''}{draft.delivery.url && <> · <a href={draft.delivery.url} target="_blank" rel="noreferrer">open issue</a></>}</p>}
+      {draft.approval_valid && draft.delivery?.status!=='sent' && draft.delivery?.status!=='sending' && <button className="primary" disabled={busy} onClick={()=>void send()}>{draft.delivery?.status==='failed' ? 'Try again' : draft.channel==='jira' ? 'Create issue now' : 'Send now'}</button>}
       {draft.policy.approvals_required>1 && draft.status!=='approved' && <p className="muted">Policy: a recipient is outside the organization, so two different people must approve.{partial.length ? ` Approved so far by ; waiting for a second approver.` : ''}</p>}
       <form className="form" onSubmit={e=>{e.preventDefault();void save();}}>
-        <label>To<input required aria-label="Draft recipients" value={to} onChange={e=>setTo(e.target.value)} disabled={!editable || busy}/></label>
-        <label>Subject<input aria-label="Subject" dir="auto" required maxLength={200} value={subject} onChange={e=>setSubject(e.target.value)} disabled={!editable || busy}/></label>
-        <label>Message<textarea aria-label="Message" dir="auto" required maxLength={8000} value={body} onChange={e=>setBody(e.target.value)} disabled={!editable || busy}/></label>
+        {draft.channel==='jira' ? <p className="muted">Project {draft.jira?.project_key} · Assignee: {draft.jira?.assignee_name || (draft.jira?.assignee_account_id ? 'linked owner' : 'unassigned')}</p>
+          : <label>To<input required aria-label="Draft recipients" value={to} onChange={e=>setTo(e.target.value)} disabled={!editable || busy}/></label>}
+        <label>{draft.channel==='jira' ? 'Summary' : 'Subject'}<input aria-label="Subject" dir="auto" required maxLength={200} value={subject} onChange={e=>setSubject(e.target.value)} disabled={!editable || busy}/></label>
+        <label>{draft.channel==='jira' ? 'Description' : 'Message'}<textarea aria-label="Message" dir="auto" required maxLength={8000} value={body} onChange={e=>setBody(e.target.value)} disabled={!editable || busy}/></label>
         {editable && <button type="submit" disabled={busy || !dirty}>Save draft changes</button>}
         {decidable && <>
           <label>{override ? 'Override reason (required, recorded in the audit log)' : 'Decision note (optional)'}<textarea aria-label="Decision note" maxLength={2000} value={note} onChange={e=>setNote(e.target.value)} disabled={busy}/></label>

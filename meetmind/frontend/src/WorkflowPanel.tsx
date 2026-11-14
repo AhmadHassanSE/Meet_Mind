@@ -3,7 +3,7 @@ import { api } from './api';
 import type { Commitment } from './CommitmentResults';
 
 type Draft = { id: string; status: string; subject: string; to: string[]; task: string; approval_valid: boolean;
-  delivery: { status: string; detail?: string } | null };
+  delivery: { status: string; detail?: string; url?: string } | null };
 type Workflow = { status: 'not_started' | 'running' | 'waiting' | 'failed' | 'completed'; stage?: string; run?: number;
   waiting_for?: { waiting_for: 'commitment_review' | 'draft_approval'; pending?: string[] } | null; error?: string | null;
   stages: string[]; drafts: Draft[]; can_control: boolean;
@@ -39,7 +39,11 @@ export function WorkflowPanel({ meetingId, actions, onChanged, navigate }: { mee
   if (!flow) return <section className="panel workflow"><h2>Workflow</h2><p className="muted">{error || 'Loading…'}</p></section>;
   const current = flow.status === 'completed' ? 'completed' : flow.stage;
   const position = flow.stages.indexOf(current || '');
-  const selected = approved.filter(item => chosen[item.id!]);
+  // A follow-up is an email (with confirmed recipients) and/or a Jira ticket per approved item.
+  const selected = approved.filter(item => chosen[item.id! + ':email']);
+  const tickets = approved.filter(item => chosen[item.id! + ':jira']);
+  const followUps = [...selected.map(item => ({ commitment_id: item.id, channel: 'email', to: (recipients[item.id!] || '').split(',').map(v => v.trim()).filter(Boolean) })),
+    ...tickets.map(item => ({ commitment_id: item.id, channel: 'jira' }))];
   const reviewWait = flow.waiting_for?.waiting_for === 'commitment_review';
   return <section className="panel workflow">
     <div className="row"><h2>Workflow{flow.run ? ` · run ${flow.run}` : ''}</h2><span className={`pill${flow.status === 'failed' ? ' warning' : ''}`}>{flow.status.replace('_', ' ')}</span></div>
@@ -54,17 +58,19 @@ export function WorkflowPanel({ meetingId, actions, onChanged, navigate }: { mee
       <p className="muted">Review and approve commitments below, link owners, then choose which approved items get a follow-up email. Recipients are never chosen by the model.</p>
       {!approved.length && <p className="muted">No approved commitments yet.</p>}
       {approved.map(item => <div className="follow-up" key={item.id}>
-        <label className="check"><input type="checkbox" checked={Boolean(chosen[item.id!])} onChange={e => setChosen({ ...chosen, [item.id!]: e.target.checked })}/> <span dir="auto">{item.task}</span></label>
-        {chosen[item.id!] && <input aria-label={`Recipients for ${item.task}`} placeholder="person@example.com, colleague@example.com" value={recipients[item.id!] || ''} onChange={e => setRecipients({ ...recipients, [item.id!]: e.target.value })}/>}
+        <span dir="auto">{item.task}</span>
+        <div className="review-controls"><label className="check"><input type="checkbox" aria-label={`Email for `} checked={Boolean(chosen[item.id! + ':email'])} onChange={e => setChosen({ ...chosen, [item.id! + ':email']: e.target.checked })}/> Email</label>
+          <label className="check"><input type="checkbox" aria-label={`Jira ticket for `} checked={Boolean(chosen[item.id! + ':jira'])} onChange={e => setChosen({ ...chosen, [item.id! + ':jira']: e.target.checked })}/> Jira ticket{item.assignee ? `, assigned to ` : ', unassigned'}</label></div>
+        {chosen[item.id! + ':email'] && <input aria-label={`Recipients for ${item.task}`} placeholder="person@example.com, colleague@example.com" value={recipients[item.id!] || ''} onChange={e => setRecipients({ ...recipients, [item.id!]: e.target.value })}/>}
       </div>)}
       <div className="review-controls">
-        <button className="primary" disabled={busy || !selected.length || selected.some(item => !recipients[item.id!]?.trim())}
-          onClick={() => void act('/resume', { follow_ups: selected.map(item => ({ commitment_id: item.id, to: recipients[item.id!].split(',').map(v => v.trim()).filter(Boolean) })) })}>Create {selected.length || ''} follow-up draft{selected.length === 1 ? '' : 's'}</button>
+        <button className="primary" disabled={busy || !followUps.length || selected.some(item => !recipients[item.id!]?.trim())}
+          onClick={() => void act('/resume', { follow_ups: followUps })}>Create {followUps.length || ''} follow-up draft{followUps.length === 1 ? '' : 's'}</button>
         <button disabled={busy} onClick={() => void act('/resume', { follow_ups: [] })}>Finish without follow-ups</button></div>
     </div> : <p className="muted">Waiting for the organizer to finish reviewing commitments.</p>)}
     {!!flow.drafts.length && <div className="workflow-drafts"><h3>Follow-up drafts</h3>{flow.drafts.map(draft => <p key={draft.id}>
-      <strong dir="auto">{draft.subject || draft.task}</strong> <small className="muted">→ {draft.to.join(', ')} · {draft.status === 'approved' && !draft.approval_valid ? 'approval outdated' : draft.status}{draft.delivery ? ` · ${draft.delivery.status.replace('_', ' ')}` : ''}</small>
-      {draft.delivery?.detail && <small className="muted"> · {draft.delivery.detail}</small>}</p>)}
+      <strong dir="auto">{draft.subject || draft.task}</strong> <small className="muted">→ {draft.to.length ? draft.to.join(', ') : 'Jira'} · {draft.status === 'approved' && !draft.approval_valid ? 'approval outdated' : draft.status}{draft.delivery ? ` · ${draft.delivery.status.replace('_', ' ')}` : ''}</small>
+      {draft.delivery?.detail && <small className="muted"> · {draft.delivery.detail}</small>}{draft.delivery?.url && <> · <a href={draft.delivery.url} target="_blank" rel="noreferrer">open issue</a></>}</p>)}
       {flow.waiting_for?.waiting_for === 'draft_approval' && <div className="row"><span className="muted">Waiting for each owner's decision in My approvals.</span>
         <button onClick={() => navigate('/queue')}>Open My approvals</button>{flow.can_control && <button disabled={busy} onClick={() => void act('/check')}>Check again</button>}</div>}</div>}
     {flow.status === 'completed' && flow.can_control && <button disabled={busy} onClick={() => void act('')}>Run again</button>}

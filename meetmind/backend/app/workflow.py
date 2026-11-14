@@ -29,7 +29,7 @@ def now():
     return datetime.now(timezone.utc).isoformat()
 
 
-class FollowUp(artifacts.Recipients):
+class FollowUp(artifacts.ChannelRecipients):
     commitment_id: str = Field(min_length=1, max_length=64)
 
 
@@ -41,8 +41,8 @@ class ResumeInput(BaseModel):
     @field_validator('follow_ups')
     @classmethod
     def unique(cls, value):
-        if len({f.commitment_id for f in value}) != len(value):
-            raise ValueError('Each commitment can have one follow-up per workflow run')
+        if len({(f.commitment_id, f.channel) for f in value}) != len(value):
+            raise ValueError('Each commitment can have one follow-up per channel per workflow run')
         return value
 
 
@@ -147,8 +147,9 @@ class WorkflowService:
                 # Retries reuse earlier drafts through their idempotency key; a failed
                 # generation moves on to a fresh key instead of returning the failure.
                 for attempt in range(MAX_DRAFT_ATTEMPTS):
-                    data = artifacts.CreateInput(commitment_id=item['id'], commitment_revision=item.get('revision', 0),
-                                                 to=follow_up['to'], idempotency_key=f"wf-{meeting_id}-{run}-{item['id']}-{attempt}")
+                    channel = follow_up.get('channel', 'email')
+                    data = artifacts.CreateInput(commitment_id=item['id'], commitment_revision=item.get('revision', 0), channel=channel,
+                                                 to=follow_up['to'], idempotency_key=f"wf-{meeting_id}-{run}-{item['id']}-{channel}-{attempt}")
                     record = await self.artifacts.create(meeting_id, data, Response(), user)
                     if record['status'] != 'failed':
                         break
