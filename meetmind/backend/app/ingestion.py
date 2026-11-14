@@ -19,10 +19,25 @@ def clean(text):
     return re.sub(r"\s+", " ", unicodedata.normalize("NFKC", text).replace("\u200b", "")).strip()
 
 
+# Labels written like "Note: ..." that are headings, not people speaking.
+NOT_SPEAKERS = {'note', 'notes', 'nb', 'ps', 'agenda', 'deadline', 'deadlines', 'action', 'actions', 'action item',
+                'action items', 'todo', 'to do', 'to-do', 'summary', 'decision', 'decisions', 'minutes', 'date', 'time',
+                'subject', 'topic', 're', 'update', 'updates', 'reminder', 'question', 'answer', 'important',
+                'warning', 'tip', 'next steps', 'outcome', 'outcomes', 'status', 'attendees', 'location'}
+
+
+def plausible_speaker(name, rest=''):
+    label = name.strip().lower().rstrip('.')
+    if label in NOT_SPEAKERS or label.startswith(('http', 'www')):
+        return False
+    # "at 10:30" splits on the clock colon; that is a time, not a speaker.
+    return not (label[-1:].isdigit() and rest.lstrip()[:1].isdigit())
+
+
 def segment(text, index, start=None, end=None, speaker=None):
     source = clean(text)
     match = re.match(r"^([^:\n]{1,60}):\s*(.+)$", source)
-    if match and speaker is None:
+    if match and speaker is None and plausible_speaker(match[1], match[2]):
         speaker, text = clean(match[1]), match[2]
     else:
         text = source

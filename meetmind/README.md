@@ -49,7 +49,7 @@ English, Urdu script, Roman Urdu transcripts are accepted. Use the Meeting langu
 
 The `extension/` folder is a Chrome (116+) extension that records a Google Meet tab and sends it to the local backend. No Google account integration or API key is needed, so it works with free Gmail. The tab audio and your microphone are mixed and uploaded in chunks to `POST /api/meet/sessions/...`; when you stop, the backend transcribes locally with Whisper, labels speakers from hints read off Meet's live captions, and saves a `google_meet` meeting you can classify and extract like any other. See `extension/README.md` for setup and limits.
 
-Extra configuration: `MEETMIND_MEET_LAG_MS` (default 500, how long Meet captions lag behind speech) and `MEETMIND_MEET_MIN_CONFIDENCE` (default 0.4, minimum overlap margin before a speaker name is attached; below it the utterance stays "Unknown speaker").
+Extra configuration: `MEETMIND_MEET_SESSION_IDLE_SECONDS` (default 900; a capture session with no upload for this long is discarded so abandoned tabs do not block new recordings), `MEETMIND_MEET_LAG_MS` (default 500, how long Meet captions lag behind speech) and `MEETMIND_MEET_MIN_CONFIDENCE` (default 0.4, minimum overlap margin before a speaker name is attached; below it the utterance stays "Unknown speaker").
 
 ### Speaker separation with pyannote (optional fallback)
 

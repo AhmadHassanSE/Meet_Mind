@@ -5,7 +5,10 @@ from functools import lru_cache
 
 STOP = set('i will the a an to by on in of and is are send not do can could should we you it this that main mein mai me hum aap tum woh wo yeh ye hai hain ho hoon hun kar karo karna karein karen karunga karungi karega karegi karenge ga gi ge ko ka ki ke tak se aur nahi nahin nai mat chahiye shayad sakta sakti sakte dunga dungi doon dun diya dena bhej bhejna bhejunga bhejungi kal aaj'.split())
 STOP.update('میں ہم آپ تم وہ یہ ہے ہیں ہوں ہو کو کا کی کے تک سے اور نہیں مت گا گی گے کروں کریں کرنا کر بھیج دوں دو دیں کل آج'.split())
-NEGATIVE = re.compile(r"(?<!\w)(?:not|never|won['’]?t|can['’]?t|cannot|don['’]?t|no longer|nahi|nahin|nai|nhi|mat|نہیں|نہ|مت)(?!\w)",re.I)
+# "nai" is left out: in Roman Urdu it also means "new" (nai report).
+NEGATIVE = re.compile(r"(?<!\w)(?:not|never|won['’]?t|can['’]?t|cannot|don['’]?t|no longer|nahi|nahin|nhi|mat|نہیں|نہ|مت)(?!\w)",re.I)
+# Reassurances negate a worry, not the task ("I'll send it, don't worry").
+REASSURANCE = re.compile(r"(?<!\w)(?:don['’]?t\s+worry|no\s+worries|no\s+problem|fikr?\s+(?:na|nah?i|mat)\s+kar\w*|koi\s+baat\s+nahi?n?|فکر\s+(?:نہ|مت)\s+کر\w*|کوئی\s+بات\s+نہیں)(?!\w)",re.I)
 CANCEL = re.compile(r'(?<!\w)(?:cancel|cancelled|canceled|withdraw|scrap|منسوخ|کینسل)(?!\w)',re.I)
 FUTURE = re.compile(r'(?<!\w)(?:karunga|karungi|krunga|krungi|karoonga|karoongi|karenge|karega|karegi|bhejunga|bhejungi|bhejoonga|bhejoongi|dunga|dungi|doonga|doongi|ga|gi|ge|گا|گی|گے|وعدہ)(?!\w)',re.I)
 UNCERTAIN = re.compile(r'(?<!\w)(?:could|might|should|maybe|perhaps|if|chahiye|shayad|sakta|sakti|sakte|cha[h]?iye|agar|چاہیے|چاہیئے|شاید|سکتا|سکتی|سکتے|اگر)(?!\w)',re.I)
@@ -32,8 +35,12 @@ def dates(text):
     return [{'text':m[0],'start':m.start(),'end':m.end(),'method':'urdu_roman_rule'} for m in DATE.finditer(text)]
 
 
+def negated(text):
+    return bool(NEGATIVE.search(REASSURANCE.sub(' ', text)))
+
+
 def kind(quote, proposed):
-    if NEGATIVE.search(quote) or CANCEL.search(quote):
+    if negated(quote) or CANCEL.search(quote):
         return 'cancellation',['negated_or_cancelled_source']
     if proposed=='commitment':
         if quote.rstrip().endswith(('?','؟')):return 'request',['non_committal_language']
@@ -44,7 +51,7 @@ def kind(quote, proposed):
 
 
 def owner(proposal,unit):
-    if FIRST.search(proposal.quote) and unit['speaker'] and proposal.kind=='commitment' and not NEGATIVE.search(proposal.quote) and not CANCEL.search(proposal.quote):
+    if FIRST.search(proposal.quote) and unit['speaker'] and proposal.kind=='commitment' and not negated(proposal.quote) and not CANCEL.search(proposal.quote):
         return unit['speaker'],'speaker',['urdu_owner_rule_requires_review']
     candidate=(proposal.owner or '').strip()
     if candidate and candidate.lower() not in AMBIGUOUS:

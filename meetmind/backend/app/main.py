@@ -523,6 +523,8 @@ async def classify_dialogue(meeting_id: str, user: User = Depends(auth.current_u
     with connect() as connection:
         connection.execute('BEGIN IMMEDIATE')
         row = connection.execute('SELECT payload FROM meetings WHERE id = ?', (meeting_id,)).fetchone()
+        if not row:
+            raise HTTPException(404, 'Meeting was deleted during analysis')
         meeting = json.loads(row['payload'])
         meeting['dialogue_analysis'] = result
         connection.execute('UPDATE meetings SET payload = ? WHERE id = ?', (json.dumps(meeting), meeting_id))
@@ -557,6 +559,8 @@ async def extract(meeting_id: str, user: User = Depends(auth.current_user)):
     with connect() as connection:
         connection.execute('BEGIN IMMEDIATE')
         row = connection.execute('SELECT payload FROM meetings WHERE id = ?', (meeting_id,)).fetchone()
+        if not row:
+            raise HTTPException(404, 'Meeting was deleted during extraction')
         current = json.loads(row['payload'])
         if current.get('commitment_revision', 0) != previous_revision or review.has_reviews(current):
             raise HTTPException(409, 'Meeting changed during extraction. Reload to keep the latest results and reviews.')

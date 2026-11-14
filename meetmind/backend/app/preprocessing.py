@@ -7,7 +7,7 @@ import json
 import re
 from pathlib import Path
 
-from .ingestion import clean, timestamp, IngestionError
+from .ingestion import clean, timestamp, IngestionError, plausible_speaker
 
 VERSION = '1.1'
 TIME = re.compile(r'\[(\d{1,2}:\d{2}(?::\d{2})?(?:[.,]\d+)?)\s*-\s*(\d{1,2}:\d{2}(?::\d{2})?(?:[.,]\d+)?)\]\s*')
@@ -33,6 +33,8 @@ def text_sources(text):
                 continue
             point = POINT_SPEAKER.match(raw)
             name = None if point else SPEAKER.match(raw)
+            if name and not plausible_speaker(name[1], raw[name.end():]):
+                name = None
             body_start = a + leading + (point.end() if point else name.end() if name else 0)
             body = line[0][body_start:b].rstrip()
             if not body:

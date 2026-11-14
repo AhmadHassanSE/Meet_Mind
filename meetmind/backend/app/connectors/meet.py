@@ -5,6 +5,7 @@ import os
 import shutil
 import tempfile
 import threading
+import time
 from pathlib import Path
 from uuid import uuid4
 from typing import Literal
@@ -27,6 +28,8 @@ MAX_CHUNK_BYTES = 10 * 1024 * 1024
 MAX_HINT_BYTES = 5 * 1024 * 1024
 MAX_EVENTS_PER_REQUEST = 2000
 MAX_SESSIONS = 3
+# Sessions without an upload for this long are abandoned (closed tab, crashed browser).
+IDLE_SECONDS = float(os.getenv("MEETMIND_MEET_SESSION_IDLE_SECONDS", "900"))
 sessions = {}
 lock = threading.Lock()
 
@@ -58,11 +61,21 @@ def fail_stale():
         shutil.rmtree(path, ignore_errors=True)
 
 
+def expire_idle():
+    """Drop abandoned sessions so they stop counting against MAX_SESSIONS."""
+    now = time.monotonic()
+    with lock:
+        stale = [key for key, s in sessions.items() if not s["finishing"] and now - s["touched"] > IDLE_SECONDS]
+    for key in stale:
+        drop(key)
+
+
 def get_session(session_id, user):
     session = sessions.get(session_id)
     # Another user's session is indistinguishable from a missing one.
     if not session or session.get('user_id') != user.id:
         raise HTTPException(404, "Meet session not found")
+    session["touched"] = time.monotonic()
     return session
 
 
@@ -75,6 +88,7 @@ def build_router(save, update_job, submit_job):
             raise HTTPException(422, "Meeting title cannot be blank")
         if not ffmpeg_path():
             raise HTTPException(503, "FFmpeg is unavailable. Install it or configure FFMPEG_PATH.")
+        expire_idle()
         with lock:
             if len(sessions) >= MAX_SESSIONS:
                 raise HTTPException(429, "Too many active Meet sessions. Finish or cancel one first.")
@@ -84,15 +98,20 @@ def build_router(save, update_job, submit_job):
                                     "self_name": data.self_name, "started_at_ms": data.started_at_ms,
                                     'input_language': data.input_language,
                                     "next_seq": 0, "bytes": 0, "hint_bytes": 0, "finishing": False,
-                                    'capture_method':data.capture_method,'bot_id':data.bot_id,'user_id':user.id}
+                                    'capture_method':data.capture_method,'bot_id':data.bot_id,'user_id':user.id,
+                                    'touched': time.monotonic()}
         return {"id": session_id}
 
     @router.post("/sessions/{session_id}/audio")
     async def audio(session_id: str, seq: int, request: Request, user: auth.User = Depends(auth.capture_user)):
         session = get_session(session_id, user)
-        body = await request.body()
-        if len(body) > MAX_CHUNK_BYTES:
-            raise HTTPException(413, "Audio chunk is too large")
+        # Stream with a cap instead of buffering an arbitrarily large body.
+        body = bytearray()
+        async for part in request.stream():
+            body.extend(part)
+            if len(body) > MAX_CHUNK_BYTES:
+                raise HTTPException(413, "Audio chunk is too large")
+        body = bytes(body)
         if not body:
             raise HTTPException(422, "Audio chunk is empty")
         with lock:
@@ -126,7 +145,11 @@ def build_router(save, update_job, submit_job):
 
     @router.delete("/sessions/{session_id}", status_code=204)
     def cancel(session_id: str, user: auth.User = Depends(auth.capture_user)):
-        get_session(session_id, user)
+        session = get_session(session_id, user)
+        with lock:
+            # Transcription owns the files once finishing starts; it cleans up itself.
+            if session["finishing"]:
+                raise HTTPException(409, "Session is already being transcribed and cannot be cancelled")
         drop(session_id)
 
     def read_events(session):

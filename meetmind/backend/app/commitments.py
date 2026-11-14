@@ -238,20 +238,36 @@ def words(doc):
     return {t.lemma_.lower() for t in doc if t.pos_ in {'VERB', 'NOUN', 'PROPN'} and not t.is_stop}
 
 
-def polarity(doc):
-    """Conservative flags, not a general-purpose semantic negation resolver."""
+def polarity(doc, verbs=frozenset()):
+    """Return ``(cancelled, negated, negation_present)``; conservative heuristics, not a semantic resolver.
+
+    ``negated`` means a negation attaches to the action itself: one of ``verbs``
+    (the task's verbs) or, when none are known, the sentence root. Reassurances
+    ("don't worry") and negations of other verbs ("won't forget to send") only
+    set ``negation_present`` so a reviewer checks the meaning.
+    """
     text = doc.text.lower().replace('’', "'")
     if not getattr(doc, 'doc', doc).has_annotation('DEP'):
-        return bool(urdu.CANCEL.search(text)), bool(urdu.NEGATIVE.search(text))
+        negative = urdu.negated(text)
+        return bool(urdu.CANCEL.search(text)) and not negative, negative, negative
+    present = bool(re.search(r"\b(?:not|never|won't|cannot|can't|don't|do not|n't)\b", text))
+    # "never mind" is itself a cancellation phrase, not a negated action.
+    negations = [t for t in doc if t.dep_ == 'neg' and t.head.lemma_.lower() not in {'worry', 'hesitate', 'mind'}]
     cancelled = bool(re.search(r'\b(?:cancel(?:led|ed)?|withdraw(?:n)?|scrap|never\s+mind|no\s+longer)\b', text))
-    negative = any(t.dep_ == 'neg' for t in doc) or bool(re.search(r"\b(?:not|never|won't|cannot|can't|don't|do not)\b", text))
     # "do not cancel" is negated cancellation, not an instruction to cancel.
     if cancelled and any(t.lemma_ in {'cancel', 'withdraw', 'scrap'} and any(c.dep_ == 'neg' for c in t.children) for t in doc):
-        return False, False
-    return cancelled and not negative, negative
+        return False, False, True
+    targets = set(verbs) or {t.lemma_ for t in doc if t.dep_ == 'ROOT'}
+    negated = any(t.head.lemma_ in targets for t in negations)
+    return cancelled and not negated, negated, present
 
 
-def resolve_owner(proposal, unit, doc, task_doc):
+DISCOURSE = {'okay', 'ok', 'sure', 'yes', 'yeah', 'so', 'well', 'alright', 'right', 'hi', 'hello', 'hey', 'thanks',
+             'also', 'now', 'and', 'but', 'please', 'great', 'fine', 'oh', 'um', 'uh', 'actually', 'anyway', 'then',
+             'good', 'cool', 'look', 'listen', 'guys', 'everyone', 'team', 'folks'}
+
+
+def resolve_owner(proposal, unit, doc, task_doc, speakers=frozenset()):
     speaker = unit['speaker']
     subjects = [t for t in doc if t.dep_ in {'nsubj', 'nsubjpass'} and t.head.dep_ == 'ROOT']
     task_verbs = {t.lemma_ for t in task_doc if t.pos_ == 'VERB'}
@@ -261,8 +277,11 @@ def resolve_owner(proposal, unit, doc, task_doc):
     if len(subjects) == 1 and subjects[0].lower_ == 'i' and speaker:
         return speaker, 'speaker', []
     vocative = re.match(r'([A-Z][\w\'-]*(?:\s+[A-Z][\w\'-]*){0,3}),\s*(?:can|could|would|will|please)\b', proposal.quote)
-    if vocative:
-        return vocative[1], 'explicit_vocative', []
+    # "Okay, can you..." addresses nobody; discourse words are never owners.
+    if vocative and vocative[1].lower() not in DISCOURSE:
+        name = vocative[1]
+        known = {s.lower() for s in speakers} | {p['text'].lower() for p in unit.get('people', [])}
+        return name, 'explicit_vocative', [] if name.lower() in known else ['vocative_name_not_a_known_speaker']
     if len(subjects) == 1 and subjects[0].lower_ in {'we', 'you', 'he', 'she', 'they', 'it'}:
         return None, 'unresolved', ['ambiguous_owner_pronoun']
     candidate = proposal.owner
@@ -273,6 +292,8 @@ def resolve_owner(proposal, unit, doc, task_doc):
         candidate = candidate.strip()
         if candidate.lower() in {'i', 'we', 'you', 'he', 'she', 'they', 'team', 'unknown', 'none'}:
             return None, 'unresolved', ['ambiguous_owner_pronoun']
+        if candidate.lower() in DISCOURSE:
+            return None, 'unresolved', ['owner_missing']
         mentioned = re.search(r'(?<!\w)' + re.escape(candidate) + r'(?!\w)', proposal.quote, re.I)
         subject_match = any(candidate.lower() in ' '.join(t.text for t in subject.subtree).lower() for subject in subjects)
         vocative = re.match(re.escape(candidate) + r'\s*,', proposal.quote, re.I)
@@ -298,6 +319,7 @@ def evidence(unit, quote, offset=None):
 
 def ground(proposals, units, nlp):
     lookup = {u['source_id']: u for u in units}
+    speakers = frozenset(u['speaker'] for u in units if u.get('speaker'))
     actions, candidates, discarded, seen = [], [], [], set()
     for proposal in proposals:
         unit = lookup.get(proposal.source_id)
@@ -318,11 +340,12 @@ def ground(proposals, units, nlp):
         if unit['text'].count(proposal.quote) > 1:
             reasons.append('repeated_quote_position_ambiguous')
         kind = proposal.kind
-        cancelled, negative = polarity(doc)
+        task_verbs = frozenset() if multilingual else frozenset(t.lemma_ for t in task_doc if t.pos_ == 'VERB')
+        cancelled, negated, negation_present = polarity(doc, task_verbs)
         if multilingual:
             kind, language_reasons = urdu.kind(proposal.quote,kind)
             reasons.extend(language_reasons)
-        elif cancelled or negative:
+        elif cancelled or negated:
             kind = 'cancellation'
             reasons.append('negated_or_cancelled_source')
         elif kind == 'commitment' and (proposal.quote.rstrip().endswith('?') or
@@ -332,6 +355,8 @@ def ground(proposals, units, nlp):
         elif kind == 'commitment' and not re.search(r"\bwill\b|\bi[’']ll\b|\b(?:am|is|are) going to\b|\b(?:promise|agree|commit|undertake)(?:s|d)?\b", proposal.quote, re.I):
             kind = 'suggestion'
             reasons.append('explicit_commitment_not_found')
+        if negation_present and kind != 'cancellation':
+            reasons.append('negation_present_check_meaning')
         # Require task content to have lexical support, without claiming entailment.
         task_words, source_words = words(task_doc), words(doc)
         task = proposal.task
@@ -344,7 +369,7 @@ def ground(proposals, units, nlp):
             else:
                 discarded.append({'task': proposal.task, 'source_id': proposal.source_id, 'reason': 'task_has_no_lexical_support'})
                 continue
-        owner, owner_method, owner_reasons = urdu.owner(proposal,unit) if multilingual else resolve_owner(proposal, unit, doc, task_doc)
+        owner, owner_method, owner_reasons = urdu.owner(proposal,unit) if multilingual else resolve_owner(proposal, unit, doc, task_doc, speakers)
         reasons.extend(owner_reasons)
         dates = [d for d in unit['dates'] if d['text'] in proposal.quote]
         deadline = proposal.deadline.strip() if proposal.deadline else None
@@ -355,7 +380,11 @@ def ground(proposals, units, nlp):
         if deadline is None and len(dates) == 1:
             deadline = dates[0]['text']
         if len(dates) > 1:
-            deadline = None
+            # Alternatives ("Monday or Friday") leave the deadline open; separate dates for
+            # separate items keep the supported one and the reviewer confirms it.
+            between = [unit['text'][a['end']:b['start']] for a, b in zip(dates, dates[1:])]
+            if any(re.search(r'\b(?:or|either|ya)\b|یا', gap, re.I) for gap in between):
+                deadline = None
             reasons.append('multiple_date_expressions')
         if deadline is None:
             reasons.append('deadline_missing')
@@ -368,7 +397,8 @@ def ground(proposals, units, nlp):
                 'needs_review': True, 'review_reasons': reasons,
                 'owner_method': owner_method, 'deadline_candidates': dates,
                 'bert_signals': unit['bert_signals'], '_nouns': words(doc) if multilingual else {t.lemma_.lower() for t in doc if t.pos_ in {'NOUN', 'PROPN'} and not t.is_stop},
-                '_unit_position': units.index(unit), '_quote_end': unit['text'].index(proposal.quote) + len(proposal.quote)}
+                '_unit_position': units.index(unit), '_quote_end': unit['text'].index(proposal.quote) + len(proposal.quote),
+                '_verbs': task_verbs}
         (actions if kind == 'commitment' else candidates).append(item)
     # Inspect all later turns, including turns the LLM omitted. Object overlap
     # indicates a possible cancellation, not proof of task identity or authority.
@@ -380,10 +410,12 @@ def ground(proposals, units, nlp):
             for sentence in later['doc'].sents:
                 if index == position and sentence.start_char < action['_quote_end']:
                     continue
-                cancel, negative = polarity(sentence)
+                # A later negation counts only when it negates the same action
+                # ("we won't send the report"), not any sentence that shares a noun.
+                cancel, negated, _ = polarity(sentence, action['_verbs'])
                 later_nouns = words(sentence.as_doc()) if later.get('language','en')!='en' else {t.lemma_.lower() for t in sentence if t.pos_ in {'NOUN', 'PROPN'} and not t.is_stop}
                 pronoun_cancel = re.search(r'\b(?:cancel|scrap)\s+(?:it|that)\b|\bnever mind\b', sentence.text, re.I)
-                if (cancel or negative) and (nouns.intersection(later_nouns) or (pronoun_cancel and index <= position + 1)):
+                if (cancel or negated) and (nouns.intersection(later_nouns) or (pronoun_cancel and index <= position + 1)):
                     relevant.append(evidence(later, sentence.text, sentence.start_char))
         if relevant:
             action['status'] = 'possible_cancellation'
@@ -391,7 +423,7 @@ def ground(proposals, units, nlp):
             action['evidence'].extend(relevant)
             action['source_ids'] = sorted({i for ev in action['evidence'] for i in ev['source_ids']})
     for item in actions + candidates:
-        for key in ('_nouns', '_unit_position', '_quote_end'):
+        for key in ('_nouns', '_unit_position', '_quote_end', '_verbs'):
             item.pop(key)
     return {'actions': actions, 'action_candidates': candidates,
             'extraction': {'version': VERSION, 'spacy': status(), 'discarded': discarded,

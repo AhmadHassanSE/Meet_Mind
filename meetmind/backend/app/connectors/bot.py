@@ -99,11 +99,14 @@ class BotManager:
         return record
 
     def list(self,user=None):
+        # Filter by owner before the limit so a user's own bots are never crowded out.
+        owner=None if user is None or user.is_admin else user.id
         with self.connect() as connection:
             self.database(connection)
-            ids=[row['id'] for row in connection.execute('SELECT id FROM meeting_bots ORDER BY rowid DESC LIMIT 30')]
-        records=[self.read(bot_id) for bot_id in ids]
-        return [r for r in records if user is None or user.is_admin or r.get('user_id')==user.id]
+            ids=[row['id'] for row in connection.execute(
+                "SELECT id FROM meeting_bots WHERE ? IS NULL OR json_extract(payload,'$.user_id')=? ORDER BY rowid DESC LIMIT 30",
+                (owner,owner))]
+        return [self.read(bot_id) for bot_id in ids]
 
     def owned(self,bot_id,user):
         """Starter or admin; other users see the bot as missing."""
@@ -112,7 +115,12 @@ class BotManager:
         return record
 
     def recover(self):
-        for record in self.list():
+        # Every unfinished bot, not only the latest 30.
+        with self.connect() as connection:
+            self.database(connection)
+            ids=[row['id'] for row in connection.execute(
+                "SELECT id FROM meeting_bots WHERE json_extract(payload,'$.state') NOT IN ('completed','failed','cancelled')")]
+        for record in map(self.read,ids):
             if record['state'] not in TERMINAL|{'transcribing'}:
                 self.update(record['id'],'failed','Backend restarted; the browser session cannot be resumed. Start a new bot.')
 
