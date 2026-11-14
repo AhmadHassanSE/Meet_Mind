@@ -13,11 +13,13 @@ The repository owner must grant teammates collaborator access before they can pu
 
 ## Branches and reviews
 
-Base current work on `mid1/ollama-foundation`. Create one branch per owned task, for example `feat/ami-annotations`, `feat/spacy-extraction`, or `feat/meeting-review`. Commit meaningful increments with messages explaining the change. Push your branch and open a pull request into the shared development branch. A teammate reviews behavior, tests and alignment with requirements before merging.
+`main` is the integrated branch. Base new work on `origin/main` and create one branch per work package, for example `eval/bert-test-split`, `fix/extraction-audit` or `feat/gmail-send`. Commit meaningful increments with messages explaining the change. Push your branch and open a pull request into `main`. The module owner or another teammate reviews behaviour, tests and alignment with requirements, and CI must pass before merging. Nothing is demonstrated from an unmerged branch.
+
+Milestones are marked with annotated tags (for example `mid1-iteration1`, `mid1-demo`) on commits whose CI passed.
 
 ```powershell
 git fetch origin
-git switch -c feat/your-task origin/mid1/ollama-foundation
+git switch -c feat/your-task origin/main
 # Implement and verify your own changes.
 git add path/to/changed/files
 git commit -m "feat: describe the implemented behavior"
@@ -32,7 +34,17 @@ Keep PR titles specific. State the requirement, change, validation and limitatio
 - Sameer: BERT classifier, spaCy NER, confidence module and evaluation.
 - Azfaar: architecture, database schema, API contracts and supporting application UI.
 
+## Iteration 2 responsibilities
+
+- Rana: LangGraph orchestrator and workflow state machine.
+- Sameer: drafting agents, Gmail sending and the policy rules engine.
+- Azfaar: approval queue UI, accounts and roles (RBAC) and Jira integration.
+
 Actual contribution evidence comes from reviewed work, not these assigned labels. Record deviations honestly.
+
+## AI-assisted work
+
+AI tools have been used in this repository: OpenAI Codex/ChatGPT, GitHub Copilot and Anthropic Claude Code. Commits produced with Claude Code carry a `Co-Authored-By: Claude` trailer. Each module owner must review, run and be able to explain AI-assisted code in their module. Disclose tool use in the evaluation report and in `docs/development-evidence.md`; never present AI-generated work as unassisted.
 
 ## Checks and evidence
 
