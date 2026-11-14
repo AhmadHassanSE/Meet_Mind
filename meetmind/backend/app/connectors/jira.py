@@ -151,6 +151,8 @@ class Jira:
                   'description': document(draft['body'])}
         if fixed.get('assignee_account_id'):
             fields['assignee'] = {'accountId': fixed['assignee_account_id']}
+        if draft['source'].get('deadline_normalized'):
+            fields['duedate'] = draft['source']['deadline_normalized']  # resolved or confirmed during review
         for attempt in range(ATTEMPTS):
             try:
                 async with self.client(site) as client:

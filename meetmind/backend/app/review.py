@@ -1,10 +1,12 @@
 """Human review preserves extraction evidence and records every decision."""
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from copy import deepcopy
 from typing import Literal
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
+
+from . import deadlines
 
 
 class ReviewInput(BaseModel):
@@ -15,6 +17,9 @@ class ReviewInput(BaseModel):
     deadline: str | None = Field(max_length=200)
     decision: Literal['pending', 'approved', 'rejected']
     note: str = Field(default='', max_length=2000)
+    # A person may confirm the calendar date and priority; otherwise they are derived again.
+    deadline_date: date | None = None
+    priority: Literal['high', 'normal', 'low'] | None = None
 
 
 def initialize(meeting):
@@ -44,11 +49,21 @@ def apply(meeting, item_id, data, user=None):
             item.get('original', item).get('status') == 'possible_cancellation') and not data.note:
         raise ValueError('Add a review note explaining the cancellation evidence before approving this task.')
     before = {key: deepcopy(item.get(key)) for key in
-              ('task', 'owner', 'deadline', 'owner_method', 'status', 'review_status', 'needs_review')}
+              ('task', 'owner', 'deadline', 'deadline_normalized', 'priority', 'owner_method', 'status',
+               'review_status', 'needs_review')}
     if 'original' not in item:
         item['original'] = deepcopy(item)
+    reference = (item.get('deadline_resolution') or {}).get('reference_date')
+    if data.deadline_date:
+        resolution = {'date': data.deadline_date.isoformat(), 'method': 'human_review', 'reason': None}
+    elif reference:
+        resolution = deadlines.normalize(data.deadline, date.fromisoformat(reference))
+    else:
+        resolution = {'date': None, 'method': 'none', 'reason': 'meeting_date_unknown'}
     item.update(task=data.task, owner=data.owner or None, deadline=data.deadline or None,
-                deadline_normalized=None, review_status=data.decision,
+                deadline_normalized=resolution['date'],
+                deadline_resolution={**(item.get('deadline_resolution') or {}), **resolution},
+                priority=data.priority or item.get('priority', 'normal'), review_status=data.decision,
                 needs_review=data.decision == 'pending', revision=item['revision'] + 1)
     item['owner_method'] = ('human_review' if item['owner'] != item['original'].get('owner')
                             else item['original'].get('owner_method', 'unresolved'))

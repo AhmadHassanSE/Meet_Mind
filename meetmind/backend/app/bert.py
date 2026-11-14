@@ -59,15 +59,34 @@ class DialogueClassifier:
                 raise ValueError('Checkpoint weights/labels do not match the saved task')
             self.labels = labels
             self.metadata['model_weights_sha256'] = sha256(self.path / 'model.safetensors')
+            self.temperature = self.load_calibration()
             torch.set_num_threads(int(os.getenv('BERT_CPU_THREADS', '4')))
             self.model.eval()
         except (OSError, ValueError, KeyError, TypeError) as error:
             raise BertUnavailable('BERT checkpoint is missing or invalid. Train and configure BERT_MODEL_PATH.') from error
 
+    def load_calibration(self):
+        """Temperature from scripts/calibrate_bert.py, used only if it was fitted for these exact weights."""
+        path = Path(os.getenv('MEETMIND_BERT_CALIBRATION', str(self.path / 'calibration.json')))
+        self.metadata['confidence_calibrated'] = False
+        if not path.is_file():
+            return 1.0
+        calibration = json.loads(path.read_text(encoding='utf-8'))
+        if calibration.get('model_weights_sha256') != self.metadata['model_weights_sha256']:
+            raise ValueError('Calibration file was fitted for different model weights')
+        self.metadata['confidence_calibrated'] = True
+        self.metadata['calibration'] = {k: calibration[k] for k in ('method', 'temperature', 'fitted_on')}
+        return float(calibration['temperature'])
+
+    def thresholds(self):
+        """Review cut-offs: environment overrides, else the values saved with the checkpoint."""
+        return (float(os.getenv('MEETMIND_REVIEW_THRESHOLD', self.metadata['review_threshold'])),
+                float(os.getenv('MEETMIND_REVIEW_MARGIN', self.metadata['review_margin'])))
+
     def predict(self, segments):
         pairs = build_inputs(segments, self.metadata['context_turns'], self.metadata.get('context_order', 'chronological'))
         results = []
-        threshold, margin_threshold = self.metadata['review_threshold'], self.metadata['review_margin']
+        threshold, margin_threshold = self.thresholds()
         with self.torch.inference_mode():
             for offset in range(0, len(pairs), 32):
                 batch = pairs[offset:offset + 32]
@@ -78,7 +97,8 @@ class DialogueClassifier:
                 tokens = encode_pairs(self.tokenizer, [x[0] for x in batch], [x[1] for x in batch],
                                       self.metadata['max_length'], strategy=self.metadata.get('pair_truncation', 'longest_first'),
                                       padding=True, return_tensors='pt')
-                probabilities = self.model(**tokens).logits.softmax(-1).tolist()
+                # Temperature 1.0 (uncalibrated) unless a matching calibration file was loaded.
+                probabilities = (self.model(**tokens).logits / getattr(self, 'temperature', 1.0)).softmax(-1).tolist()
                 for index, (segment, probs) in enumerate(zip(segments[offset:offset + 32], probabilities)):
                     top = sorted(range(len(probs)), key=lambda i: probs[i], reverse=True)
                     label, score = self.labels[top[0]], probs[top[0]]
@@ -99,6 +119,8 @@ class DialogueClassifier:
                                     'description': self.metadata['label_descriptions'][label],
                                     'score': score, 'margin': margin,
                                     'possible_action': label in ACTION_LABELS,
+                                    # Probability that the utterance is any action-related act.
+                                    'action_probability': sum(p for i, p in enumerate(probs) if self.labels[i] in ACTION_LABELS),
                                     'input_truncated': input_truncated,
                                     'target_text_truncated': target_truncated,
                                     'input_tokens': full_lengths[index], 'processed_tokens': processed_tokens,
@@ -123,4 +145,6 @@ def classify(segments):
         metadata = {k: classifier.metadata[k] for k in [
             'model_name', 'model_revision', 'checkpoint_stage', 'best_epoch',
             'validation_macro_f1', 'dataset_manifest_sha256', 'model_weights_sha256', 'confidence_calibrated']}
+        metadata['calibration'] = classifier.metadata.get('calibration')
+        metadata['review_threshold'], metadata['review_margin'] = classifier.thresholds()
         return {'task': 'ami_dialogue_act', 'predictions': predictions, 'model': metadata}

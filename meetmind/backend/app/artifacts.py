@@ -238,6 +238,7 @@ class Service:
             source={'commitment_id':item['id'],'revision':item.get('revision',0),
                     'fingerprint':digest({k:item.get(k) for k in ('task','owner','deadline','evidence')}),
                     'task':item['task'],'owner':item.get('owner'),'deadline':item.get('deadline'),
+                    'deadline_normalized':item.get('deadline_normalized'),'priority':item.get('priority'),
                     'evidence':deepcopy(item.get('evidence',[]))}
             extra=self.channel_context[data.channel](c,meeting_id,item) if data.channel in self.channel_context else None
             record={'id':str(uuid4()),'meeting_id':meeting_id,'meeting_title':meeting['title'],

@@ -103,7 +103,8 @@ def source_units(meeting, predictions):
                           'parent_id': group['parent_id'], 'parent_text': parent['text'] if parent else None,
                           'parent_offset': partition[0].get('source_start', 0) if len(partitions) > 1 else 0,
                           'bert_signals': [{'source_id': s['id'], 'label': signals[s['id']]['label'],
-                                            'score': signals[s['id']]['score']} for s in partition]})
+                                            'score': signals[s['id']]['score'],
+                                            'action_probability': signals[s['id']].get('action_probability')} for s in partition]})
     return units
 
 

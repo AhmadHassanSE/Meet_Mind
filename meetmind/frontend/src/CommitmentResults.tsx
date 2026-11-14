@@ -6,10 +6,14 @@ export type Commitment = {
   id?: string; revision?: number; task: string; owner: string | null; deadline: string | null;
   source_id: number; needs_review: boolean; kind?: string; status?: string; review_status?: string;
   review_reasons?: string[]; evidence?: CommitmentEvidence[]; assignee?: { id: string; name: string; email: string } | null;
+  deadline_normalized?: string | null; priority?: 'high' | 'normal' | 'low'; priority_cue?: string | null;
+  deadline_resolution?: { method: string; reason: string | null; reference_date?: string };
+  confidence?: { score: number; action_probability: number | null };
   original?: { task: string; owner: string | null; deadline: string | null; status?: string };
   review_history?: { revision: number; at: string; decision: string; note: string; reviewer?: string }[];
 };
-export type ReviewData = { revision: number; task: string; owner: string | null; deadline: string | null; decision: string; note: string };
+export type ReviewData = { revision: number; task: string; owner: string | null; deadline: string | null; decision: string; note: string;
+  deadline_date?: string | null; priority?: 'high' | 'normal' | 'low' };
 export type CommitmentMeeting = {
   status: string; model: string | null; actions: Commitment[]; action_candidates?: Commitment[];
   extraction?: { warnings: string[]; spacy: { model: string; version?: string } };
@@ -28,6 +32,8 @@ function Result({ item, meeting, onReview, onDraft, disabled, access, directory 
   const [owner, setOwner] = useState(item.owner || '');
   const [deadline, setDeadline] = useState(item.deadline || '');
   const [note, setNote] = useState('');
+  const [deadlineDate, setDeadlineDate] = useState(item.deadline_normalized || '');
+  const [priority, setPriority] = useState(item.priority || 'normal');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const reviewed = item.review_status && item.review_status !== 'pending';
@@ -36,14 +42,17 @@ function Result({ item, meeting, onReview, onDraft, disabled, access, directory 
     if (!item.id) return;
     setSaving(true); setError('');
     try {
-      await onReview(item.id, { revision: item.revision || 0, task, owner: owner || null, deadline: deadline || null, decision, note });
+      // A date is sent only when the reviewer changed it; otherwise the server re-resolves the wording.
+      await onReview(item.id, { revision: item.revision || 0, task, owner: owner || null, deadline: deadline || null, decision, note,
+        deadline_date: deadlineDate && deadlineDate !== item.deadline_normalized ? deadlineDate : null, priority });
       setEditing(false); setNote('');
     } catch (e) { setError((e as Error).message); }
     finally { setSaving(false); }
   }
   return <article className="commitment-result" data-id={item.id} data-status={item.status || 'proposed'}>
     <span className={`pill${reviewed ? '' : ' warning'}`}>{reviewed ? item.review_status : cancellation ? 'Possible cancellation' : item.kind && item.kind !== 'commitment' ? item.kind : 'Needs review'}</span>
-    <h3 dir="auto">{item.task}</h3><p className="muted">Owner: {item.owner || 'Unresolved'} · Due: {item.deadline || 'Unresolved'}</p>
+    <h3 dir="auto">{item.task}</h3><p className="muted">Owner: {item.owner || 'Unresolved'} · Due: {item.deadline || 'Unresolved'}{item.deadline_normalized ? ` (${new Date(item.deadline_normalized + 'T00:00').toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })})` : item.deadline ? ' (date not resolved)' : ''}</p>
+    {(item.priority || item.confidence) && <p className="muted">{item.priority && <span className={`pill${item.priority === 'high' ? ' warning' : ''}`}>Priority: {item.priority}</span>}{item.priority_cue && <small> “{item.priority_cue}”</small>}{item.confidence && <small> · Review score {item.confidence.score.toFixed(2)}{item.confidence.action_probability != null ? ` (BERT action probability ${item.confidence.action_probability.toFixed(2)})` : ''}</small>}</p>}
     <p className="muted">Owner account: {item.assignee ? `${item.assignee.name} <${item.assignee.email}>` : 'Not linked'}{owned ? ' · assigned to you' : ''}</p>
     {organize && onAssign && item.id && item.kind !== 'cancellation' && <label className="assignee">Link owner account
       <select aria-label="Owner account" value={item.assignee?.id || ''} disabled={disabled || saving}
@@ -61,6 +70,8 @@ function Result({ item, meeting, onReview, onDraft, disabled, access, directory 
       <label>Task<textarea dir="auto" aria-label="Task" required maxLength={1000} value={task} onChange={e => setTask(e.target.value)}/></label>
       <label>Owner<input dir="auto" aria-label="Owner" maxLength={200} value={owner} onChange={e => setOwner(e.target.value)} placeholder="Unresolved"/></label>
       <label>Deadline<input dir="auto" aria-label="Deadline" maxLength={200} value={deadline} onChange={e => setDeadline(e.target.value)} placeholder="Unresolved"/></label>
+      <label>Deadline date<input type="date" aria-label="Deadline date" value={deadlineDate} onChange={e => setDeadlineDate(e.target.value)}/></label>
+      <label>Priority<select aria-label="Priority" value={priority} onChange={e => setPriority(e.target.value as 'high' | 'normal' | 'low')}><option value="high">High</option><option value="normal">Normal</option><option value="low">Low</option></select></label>
       <label>Review note<textarea dir="auto" aria-label="Review note" maxLength={2000} value={note} onChange={e => setNote(e.target.value)}/></label>
       <p className="muted">Corrections are your input; the original extraction and source evidence are retained. Approval does not execute the task.</p>
       {cancellation && <p className="mint">Check the cancellation evidence. Add a note explaining your decision before approving.</p>}
@@ -70,7 +81,7 @@ function Result({ item, meeting, onReview, onDraft, disabled, access, directory 
         <button type="button" disabled={saving || disabled || !task.trim()} onClick={() => void submit('rejected')}>Reject</button>
         <button type="button" disabled={saving} onClick={() => { setEditing(false); setError(''); }}>Cancel</button>
       </div>{error && <p role="alert" className="error">{error}</p>}
-    </form> : organize && <button disabled={disabled || !item.id} onClick={() => { setTask(item.task); setOwner(item.owner || ''); setDeadline(item.deadline || ''); setEditing(true); }}>Review / edit</button>}
+    </form> : organize && <button disabled={disabled || !item.id} onClick={() => { setTask(item.task); setOwner(item.owner || ''); setDeadline(item.deadline || ''); setDeadlineDate(item.deadline_normalized || ''); setPriority(item.priority || 'normal'); setEditing(true); }}>Review / edit</button>}
     {item.review_status==='approved' && onDraft && (organize || owned) && <button disabled={disabled} onClick={()=>onDraft(item)}>Draft follow-up</button>}
     {!editing && error && <p role="alert" className="error">{error}</p>}
   </article>;

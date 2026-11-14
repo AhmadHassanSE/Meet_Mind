@@ -5,6 +5,7 @@ import os
 import shutil
 import tempfile
 import threading
+from datetime import datetime, timezone
 import time
 from pathlib import Path
 from uuid import uuid4
@@ -210,6 +211,7 @@ def build_router(save, update_job, submit_job):
             prepared = prepare("\n".join(s["source"] for s in labelled), labelled)
             unattributed = sum(1 for s in labelled if not s["speaker"])
             meeting = {"id": str(uuid4()), "title": session["title"],
+                       'meeting_date': datetime.fromtimestamp(session['started_at_ms'] / 1000, timezone.utc).isoformat(),
                        "transcript": "\n".join(s["source"] for s in labelled), "segments": labelled,
                        "actions": [], "status": "uploaded", "model": None, "source_type": "google_meet",
                        "filename": None, "meeting_code": session["meeting_code"], **metadata,

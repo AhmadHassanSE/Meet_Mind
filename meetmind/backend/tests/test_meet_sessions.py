@@ -133,6 +133,11 @@ def test_failed_transcription_reports_error_and_cleans_up(client, monkeypatch):
     client.post(f'/api/meet/sessions/{session_id}/audio?seq=0', content=b'a')
     job = await_job(client, client.post(f'/api/meet/sessions/{session_id}/finish').json()['id'])
     assert job['status'] == 'failed' and job['message'] == 'No speech detected.'
+    # Cleanup runs in the job's finally block just after the failure is recorded.
+    for _ in range(100):
+        if not directory.exists():
+            break
+        time.sleep(.02)
     assert not directory.exists()
 
 
