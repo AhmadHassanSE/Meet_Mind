@@ -161,16 +161,23 @@ Do not turn discussion, past events, possibilities, or BERT labels into commitme
 Copy deadline wording verbatim, never invent calendar dates. First-person promise owner is the provided speaker, never an invented name.
 Keep requests/suggestions separate even when BERT predicts offer. Capture explicit cancellations for reconciliation.
 Include the full supporting clause in quote, including negations. Do not create tasks for generic 'yes' or infer its referent.
-Input may be English, Urdu script, Roman Urdu or mixed. Preserve the source language/script in task and quote.
-Never translate a quote or deadline. For Urdu/Roman Urdu, copy task content words from the original source.
-For multilingual turns, copy the ENTIRE supplied text verbatim as quote to avoid changing Urdu spelling.
-Example input source_id 1, speaker علی, text 'میں رپورٹ کل بھیج دوں گا۔':
-{"actions":[{"task":"رپورٹ بھیج","owner":"علی","deadline":"کل","source_id":1,"quote":"میں رپورٹ کل بھیج دوں گا۔","kind":"commitment"}]}
-'Main report kal bhej dunga' and 'میں رپورٹ کل بھیج دوں گا' are promises, not completed work.
-'Report mat bhejna' and 'رپورٹ مت بھیجنا' are cancellations. 'Shayad' / 'شاید' express uncertainty.
 Multiple different tasks can reference one turn, each with its own supporting quote. Return actions [] if none exist.
+Only use text from the supplied turns; never copy text from these instructions.
+task names the work itself using words from the quote; it is never a kind name such as 'commit' or 'request'.
+Propose each sentence at most once, with the single best kind.
+Example input source_id 7, speaker Bilal, text 'I can book the hall on Monday.':
+{"actions":[{"task":"Book the hall","owner":"Bilal","deadline":"on Monday","source_id":7,"quote":"I can book the hall on Monday.","kind":"commitment"}]}
 Examples: 'I will send the report by Friday.' = commitment; 'Could we redesign it?' = suggestion;
 'Ali, can you book the room?' = request; 'Do not send the report.' = cancellation. No actions are executed."""
+
+# Added only for batches that contain Urdu or Roman Urdu: a small model shown these
+# examples on an English meeting copied them as if they were transcript text.
+MULTILINGUAL = """Input may be English, Urdu script, Roman Urdu or mixed. Preserve the source language/script in task.
+Never translate a deadline. For Urdu/Roman Urdu, copy task content words from the original source.
+Example input source_id 1, speaker علی, text 'میں رپورٹ کل بھیج دوں گا۔':
+{"actions":[{"task":"رپورٹ بھیج","owner":"علی","deadline":"کل","source_id":1,"kind":"commitment"}]}
+'Main report kal bhej dunga' and 'میں رپورٹ کل بھیج دوں گا' are promises, not completed work.
+'Report mat bhejna' and 'رپورٹ مت بھیجنا' are cancellations. 'Shayad' / 'شاید' express uncertainty."""
 
 
 def restore_source_quote(quote, text):
@@ -189,8 +196,11 @@ def restore_source_quote(quote, text):
     return text[start:start + len(quote)]
 
 
-async def propose(units, url, model):
+async def propose(units, url, model, rejected=None):
+    """Ollama proposals with exact evidence. Proposals whose quote is not an exact
+    span of their turn are dropped (recorded in ``rejected``), never repaired by guessing."""
     proposals = []
+    rejected = [] if rejected is None else rejected
     async with httpx.AsyncClient(timeout=httpx.Timeout(float(os.getenv('OLLAMA_TIMEOUT_SECONDS','600')), connect=10)) as client:
         for batch in batches(units):
             multilingual_batch = any(u['language']!='en' for u in batch)
@@ -203,7 +213,7 @@ async def propose(units, url, model):
                 definition['properties'].pop('quote')
                 definition['required'].remove('quote')
                 definition['properties']['source_id']={'type':'integer','enum':[u['source_id'] for u in batch]}
-                system += '\nFor THIS batch the schema intentionally has NO quote field. Return only task, owner, deadline, source_id, kind. Select the exact source_id of the supporting turn. The server attaches the complete original turn as evidence. Do not output quote.'
+                system += '\n' + MULTILINGUAL + '\nFor THIS batch the schema intentionally has NO quote field. Return only task, owner, deadline, source_id, kind. Select the exact source_id of the supporting turn. The server attaches the complete original turn as evidence. Do not output quote.'
             response = await client.post(f'{url}/api/chat', json={
                 'model': model, 'stream': False, 'format': schema,
                 **({'think':False} if 'qwen3' in model.lower() else {}),
@@ -227,9 +237,14 @@ async def propose(units, url, model):
             result = Proposals.model_validate(data)
             for proposal in result.actions:
                 if proposal.source_id not in allowed:
-                    raise InvalidExtraction('Ollama returned an invalid source ID or quote; saved results were preserved.')
-                proposal.quote = restore_source_quote(proposal.quote, allowed[proposal.source_id]['text'])
-            proposals.extend(result.actions)
+                    rejected.append({'task': proposal.task, 'source_id': proposal.source_id, 'reason': 'unknown_source_turn'})
+                    continue
+                try:
+                    proposal.quote = restore_source_quote(proposal.quote, allowed[proposal.source_id]['text'])
+                except InvalidExtraction:
+                    rejected.append({'task': proposal.task, 'source_id': proposal.source_id, 'reason': 'quote_not_in_source_turn'})
+                    continue
+                proposals.append(proposal)
     return proposals
 
 
@@ -318,11 +333,30 @@ def evidence(unit, quote, offset=None):
             'speaker': unit['speaker'], 'start': matched[0].get('start'), 'end': matched[-1].get('end')}
 
 
+PROMISE = re.compile(r"\b(?:i will|i'll|i’ll|i am going to|i'm going to|i can|i promise)\b", re.I)
+
+
+def bert_offers(proposals, units):
+    """English turns the fine-tuned BERT labels as an offer, with first-person promise wording,
+    that the language model proposed nothing for. They become ordinary proposals (exact turn as
+    evidence) and go through the same grounding and human review."""
+    covered = {p.source_id for p in proposals}
+    extra = []
+    for unit in units:
+        offered = any(s.get('label') == 'off' for s in unit.get('bert_signals', []))
+        if (unit['source_id'] not in covered and offered and unit.get('language', 'en') == 'en'
+                and PROMISE.search(unit['text']) and len(unit['text']) <= 1000):
+            extra.append(Proposal(source_id=unit['source_id'], quote=unit['text'], task=unit['text'],
+                                  owner=None, deadline=None, kind='commitment'))
+    return extra
+
+
 def ground(proposals, units, nlp):
     lookup = {u['source_id']: u for u in units}
     speakers = frozenset(u['speaker'] for u in units if u.get('speaker'))
     actions, candidates, discarded, seen = [], [], [], set()
-    for proposal in proposals:
+    from_bert = bert_offers(proposals, units)
+    for proposal in list(proposals) + from_bert:
         unit = lookup.get(proposal.source_id)
         if not unit or proposal.quote not in unit['text']:
             raise InvalidExtraction('Invalid source evidence')
@@ -336,12 +370,18 @@ def ground(proposals, units, nlp):
             doc = parser(proposal.quote)
             task_doc = parser(proposal.task)
         reasons = ['human_review_required']
+        if any(proposal is extra for extra in from_bert):
+            reasons.append('found_by_bert_offer_missed_by_language_model')
         if multilingual:
             reasons.append('urdu_roman_rules_not_validated')
         if unit['text'].count(proposal.quote) > 1:
             reasons.append('repeated_quote_position_ambiguous')
         kind = proposal.kind
-        task_verbs = frozenset() if multilingual else frozenset(t.lemma_ for t in task_doc if t.pos_ == 'VERB')
+        # Negation is judged against the action's verbs. If the model's task wording is not
+        # supported by the quote (e.g. it wrote the kind name), take the verbs from the quote.
+        task_supported = bool(words(task_doc) & words(doc))
+        task_verbs = frozenset() if multilingual else frozenset(
+            t.lemma_ for t in (task_doc if task_supported else doc) if t.pos_ == 'VERB')
         cancelled, negated, negation_present = polarity(doc, task_verbs)
         if multilingual:
             kind, language_reasons = urdu.kind(proposal.quote,kind)
@@ -362,7 +402,9 @@ def ground(proposals, units, nlp):
         task_words, source_words = words(task_doc), words(doc)
         task = proposal.task
         if not task_words or not task_words.intersection(source_words):
-            if multilingual and source_words and len(proposal.quote)<=1000:
+            # The evidence is exact; only the model's task wording is unsupported (small models
+            # sometimes write the kind name). Keep the source clause for the reviewer to shorten.
+            if source_words and len(proposal.quote)<=1000:
                 # Do not accept an unsupported/translated task label as evidence.
                 # Keep the verbatim proposal clause for a reviewer to shorten.
                 task = proposal.quote
@@ -401,6 +443,17 @@ def ground(proposals, units, nlp):
                 '_unit_position': units.index(unit), '_quote_end': unit['text'].index(proposal.quote) + len(proposal.quote),
                 '_verbs': task_verbs}
         (actions if kind == 'commitment' else candidates).append(item)
+    # One kind per supporting sentence: a model may propose the same quote as both a request
+    # and a commitment. Keep the strongest kind; different tasks of the same kind both stay.
+    rank = {'commitment': 0, 'request': 1, 'suggestion': 2, 'cancellation': 3}
+    best = {}
+    for item in actions + candidates:
+        key = (item['source_id'], item['evidence'][0]['quote'])
+        if key not in best or rank[item['kind']] < rank[best[key]]:
+            best[key] = item['kind']
+    for item in [i for i in actions + candidates if i['kind'] != best[(i['source_id'], i['evidence'][0]['quote'])]]:
+        (actions if item in actions else candidates).remove(item)
+        discarded.append({'task': item['task'], 'source_id': item['source_id'], 'reason': 'same_quote_proposed_with_another_kind'})
     # Inspect all later turns, including turns the LLM omitted. Object overlap
     # indicates a possible cancellation, not proof of task identity or authority.
     for action in actions:

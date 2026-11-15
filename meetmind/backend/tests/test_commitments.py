@@ -96,8 +96,28 @@ def test_evidence_repair_rejects_changed_meaning_or_ambiguous_span(quote, text):
         c.restore_source_quote(quote, text)
 
 
+@pytest.mark.parametrize('language,urdu_examples', [('en', False), ('roman-ur', True)])
+def test_prompt_examples_match_the_batch_language(monkeypatch, language, urdu_examples):
+    import asyncio
+    sent = []
+    unit = {'source_id': 1, 'text': 'I will send the report.', 'speaker': 'Sara', 'language': language,
+            'bert_signals': [], 'people': [], 'dates': []}
+
+    class Client:
+        def __init__(self, **kwargs): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *args): pass
+        async def post(self, url, **kwargs):
+            sent.append(kwargs['json']['messages'][0]['content'])
+            return httpx.Response(200, json={'message': {'content': '{"actions": []}'}}, request=httpx.Request('POST', url))
+    monkeypatch.setattr(c.httpx, 'AsyncClient', Client)
+    asyncio.run(c.propose([unit], 'http://127.0.0.1:11434', 'fixture'))
+    assert ('Main report kal bhej dunga' in sent[0]) is urdu_examples
+
+
 @pytest.mark.parametrize('invalid', ['quote', 'source', 'schema', 'limit'])
 def test_ollama_response_validation(monkeypatch, invalid):
+    """Malformed output fails safely; proposals without exact evidence are dropped."""
     import asyncio
     unit = {'source_id': 1, 'text': 'I will send the report.', 'speaker': 'Sara',
             'bert_signals': [], 'people': [], 'dates': []}
@@ -120,6 +140,12 @@ def test_ollama_response_validation(monkeypatch, invalid):
             assert kwargs['json']['format']['properties']['actions']
             return httpx.Response(200, json=payload, request=httpx.Request('POST', url))
     monkeypatch.setattr(c.httpx, 'AsyncClient', Client)
+    if invalid in {'quote', 'source'}:
+        # A proposal without exact evidence is dropped and recorded; the rest of the meeting still extracts.
+        rejected = []
+        assert asyncio.run(c.propose([unit], 'http://127.0.0.1:11434', 'fixture', rejected)) == []
+        assert rejected[0]['reason'] == ('quote_not_in_source_turn' if invalid == 'quote' else 'unknown_source_turn')
+        return
     with pytest.raises(ValueError):
         asyncio.run(c.propose([unit], 'http://127.0.0.1:11434', 'fixture'))
 
@@ -147,10 +173,26 @@ def test_unsupported_task_invalid_quote_and_duplicate_proposals(nlp):
     _, units = units_for('Sara: I will send the report.')
     item = proposal(units[0])
     assert len(c.ground([item, item], units, nlp)['actions']) == 1
+    # Invented task wording is never kept; the exact source clause becomes the task for the reviewer to edit.
     result = c.ground([proposal(units[0], task='Buy a yacht')], units, nlp)
-    assert not result['actions'] and result['extraction']['discarded']
+    [kept] = result['actions']
+    assert kept['task'] == 'I will send the report.' and 'yacht' not in kept['task']
+    assert 'task_retained_as_source_clause_requires_edit' in kept['review_reasons']
     with pytest.raises(c.InvalidExtraction):
         c.ground([proposal(units[0], quote='Invented statement')], units, nlp)
+
+
+def test_bert_offer_missed_by_the_model_becomes_a_reviewable_commitment(nlp):
+    _, units = units_for("Ayesha: Let's wrap up the release.\nSara: I will send the test report by Friday.")
+    units[1]['bert_signals'] = [{'source_id': units[1]['source_id'], 'label': 'off', 'score': .92, 'action_probability': .93}]
+    model_only = proposal(units[0], task='Wrap up the release', kind='suggestion')
+    result = c.ground([model_only], units, nlp)
+    [found] = result['actions']
+    assert found['owner'] == 'Sara' and found['evidence'][0]['quote'] == 'I will send the test report by Friday.'
+    assert 'found_by_bert_offer_missed_by_language_model' in found['review_reasons']
+    # Turns the model already covered, or that BERT did not label as offers, are not added.
+    units[0]['bert_signals'] = [{'label': 'off', 'score': .9}]
+    assert len(c.ground([model_only], units, nlp)['action_candidates']) == 1
 
 
 def test_split_parent_is_rejoined_and_evidence_spans_children(nlp):

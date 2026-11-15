@@ -566,8 +566,14 @@ async def extract_meeting(meeting_id):
         units = commitments.source_units(meeting, analysis['predictions'])
         nlp = await run_in_threadpool(commitments.annotate, units)
         extraction_model = MULTILINGUAL_MODEL if languages.needs_translation(meeting) else OLLAMA_MODEL
-        proposals = await commitments.propose(units, OLLAMA_URL, extraction_model)
+        rejected = []
+        proposals = await commitments.propose(units, OLLAMA_URL, extraction_model, rejected)
         result = await run_in_threadpool(commitments.ground, proposals, units, nlp)
+        if rejected:
+            info = result.setdefault('extraction', {})
+            info['discarded'] = rejected + info.get('discarded', [])
+            info.setdefault('warnings', []).append(
+                f'{len(rejected)} model proposal(s) were dropped because their quote was not exact transcript text.')
     except (bert.BertUnavailable, commitments.NLPUnavailable) as error:
         raise HTTPException(503, str(error)) from error
     except httpx.HTTPError as error:

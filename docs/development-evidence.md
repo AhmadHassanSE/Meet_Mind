@@ -209,3 +209,14 @@ Verified: 325 backend tests passed locally. GitHub Actions did not run on the 14
 ## 15 November 2026 - BERT confidence calibration
 
 Temperature scaling fitted on validation only (T = 1.2281) for the selected BERT-base weights `5a70014d...`. Held-out test expected calibration error 0.1063 -> 0.0433 (validation 0.1036 -> 0.0419); accuracy unchanged (0.6632 test) and identical to the one-time test evaluation, confirming identical inputs. Test was used only to report calibration, not to fit it. The app applies the calibration only when its weights hash matches and now reports `confidence_calibrated: true`; verified with a local inference call. Details and reliability diagram: `meetmind/backend/reports/bert-base-calibration-v1`.
+
+## 15 November 2026 - extraction robustness with the local 3B model (found in live use)
+
+A live workflow run failed at extraction ("Model output was invalid"). Diagnosis on the actual meeting showed that `llama3.2` copied the Urdu/Roman Urdu few-shot examples from the system prompt as if they were transcript quotes, so the strict exact-evidence check rejected the whole extraction. It also sometimes wrote the kind name ("commit") as the task and skipped a clear first-person promise in a two-line meeting. Fixes:
+- Urdu examples are sent only for Urdu/Roman Urdu batches; English batches get a neutral English example.
+- A proposal whose quote is not exact transcript text is dropped and recorded (`quote_not_in_source_turn`) instead of failing the meeting.
+- Unsupported task wording is replaced by the exact source clause for the reviewer to edit, and negation is then judged on the quote's verbs.
+- Duplicate proposals of the same sentence keep the strongest kind.
+- A turn BERT labels as an offer with first-person promise wording, and that the model skipped, becomes a reviewable commitment (`found_by_bert_offer_missed_by_language_model`).
+
+Evidence still always comes from exact transcript text. Verified with the real local model on the failing meeting and the demo transcript (all expected items extracted), plus 328 backend tests.
