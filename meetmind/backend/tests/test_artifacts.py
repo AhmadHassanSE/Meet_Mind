@@ -50,7 +50,7 @@ def test_graph_draft_and_independent_approval_survive_reload(setup):
     assert result.status_code==201,result.text
     draft=result.json()
     assert draft['status']=='draft' and not draft['approval_valid']
-    assert draft['graph_steps']==['draft_email','validate_email']
+    assert draft['graph_steps']==['draft_email','validate_email','check_facts']
     assert calls[0]['task']=='Send the project report'
     assert draft['to']==['sara@example.com'] and draft['source']['evidence']
     approved=client.post(f"/api/artifacts/{draft['id']}/review",json={'revision':1,'decision':'approved'}).json()

@@ -1,7 +1,7 @@
 """Persistent email drafts and separate revision-bound human approval."""
 import asyncio
 from copy import deepcopy
-from datetime import datetime,timezone
+from datetime import date,datetime,timezone
 import hashlib
 import json
 import logging
@@ -118,6 +118,21 @@ def rights(c,record,user,approver='owner'):
     decide=owner==user.id if owner and approver=='owner' else meeting_access['can_organize']
     return {'can_edit':edit,'can_decide':decide,'assignee_id':owner,'can_organize':meeting_access['can_organize'],
             'can_override':user.is_admin and not decide}
+
+
+def readable_date(value):
+    try:return date.fromisoformat(value[:10]).strftime('%A %d %B %Y') if value else None
+    except ValueError:return None
+
+
+def draft_context(meeting,source,user):
+    """What the drafting model sees: reviewed facts only. Recipients are never included."""
+    return {'meeting_title':meeting['title'],
+            'meeting_date':readable_date(meeting.get('meeting_date') or meeting.get('created_at')),
+            'task':source['task'],'owner':source['owner'],'deadline_wording':source['deadline'],
+            'deadline_date':readable_date(source.get('deadline_normalized')),
+            'priority':source.get('priority') or 'normal','sender_name':user.name,
+            'evidence':[{'speaker':e.get('speaker'),'quote':e.get('quote','')[:2000]} for e in source['evidence'][:3]]}
 
 
 def current_policy():
@@ -249,9 +264,8 @@ class Service:
             event(record,'draft_requested',user=user)
             c.execute('INSERT INTO artifacts VALUES (?,?,?,?)',(record['id'],meeting_id,data.idempotency_key,json.dumps(record)))
         try:
-            context={'meeting_title':meeting['title'],'task':source['task'],'owner':source['owner'],
-                     'deadline':source['deadline'],'evidence':[{'quote':e.get('quote','')[:2000]} for e in source['evidence'][:3]]}
-            email,steps=await artifact_graph.generate(context,self.url,record['model'],data.channel)
+            context=draft_context(meeting,source,user)
+            email,steps,warnings=await artifact_graph.generate(context,self.url,record['model'],data.channel)
             # Revalidate even if graph is supplied by a future adapter.
             email=artifact_graph.EmailText.model_validate(email).model_dump()
             with self.connect() as c:
@@ -259,7 +273,8 @@ class Service:
                 latest=self.read(c,record['id'])
                 if latest['status']!='drafting':raise HTTPException(409,'Source changed while drafting; create a new draft')
                 self.source(c,meeting_id,data.commitment_id,data.commitment_revision)
-                latest.update(**email,status='draft',graph_steps=steps,revision=1,original_generated=deepcopy(email))
+                latest.update(**email,status='draft',graph_steps=steps,revision=1,original_generated=deepcopy(email),
+                              draft_context=context,draft_warnings=warnings)
                 event(latest,'draft_generated')
                 write(c,latest)
                 return self.view(c,latest,user)
@@ -319,6 +334,8 @@ class Service:
                     event(record,'rejected',data.note,user,admin_override=override)
                 if override:auth.audit(c,user,'admin_override_'+data.decision,record['id'],{'note':data.note})
             else:
+                if record.get('draft_context'):  # re-check edited text against the same reviewed facts
+                    record['draft_warnings']=artifact_graph.check_facts(data.model_dump(),record['draft_context'])
                 record.update(**data.model_dump(exclude={'revision'}),status='draft',approval=None,
                               partial_approvals=[],revision=record['revision']+1)
                 event(record,'edited','Editing requires a new approval',user)

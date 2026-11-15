@@ -103,7 +103,7 @@ def test_owner_approved_ticket_is_created_once_with_the_linked_assignee(team, ji
     meeting_id = meeting_with_item(admin)
     assign(admin, meeting_id, sara_user['id'])
     record = ticket(admin, meeting_id).json()
-    assert record['channel'] == 'jira' and record['to'] == [] and record['graph_steps'] == ['draft_ticket', 'validate_ticket']
+    assert record['channel'] == 'jira' and record['to'] == [] and record['graph_steps'] == ['draft_ticket', 'validate_ticket', 'check_facts']
     assert record['jira'] == {'site': SITE['base_url'], 'project_key': 'MEET', 'assignee_user_id': sara_user['id'],
                               'assignee_account_id': 'acc-sara', 'assignee_name': 'Sara J'}
     assert admin.post(f"/api/artifacts/{record['id']}/send").status_code == 409  # not approved yet
@@ -115,7 +115,10 @@ def test_owner_approved_ticket_is_created_once_with_the_linked_assignee(team, ji
     [fields] = jira.issues
     assert fields['assignee'] == {'accountId': 'acc-sara'} and fields['project'] == {'key': 'MEET'}
     assert fields['summary'] == 'Send the project report'
-    assert [p['content'][0]['text'] for p in fields['description']['content']] == ['Owner: Sara', 'Due: Friday']
+    # The description is built from reviewed facts, not from the model's text.
+    paragraphs = [p['content'][0]['text'] for p in fields['description']['content']]
+    assert paragraphs[1:4] == ['Owner: Sara.', 'Due: Friday.', 'Evidence: "I will send the report by Friday."']
+    assert paragraphs[0].startswith('Agreed in Sync')
     assert sara.post(f"/api/artifacts/{record['id']}/send").json()['delivery']['issue_key'] == 'MEET-1'
     assert len(jira.issues) == 1
 

@@ -21,6 +21,21 @@ by hand from **Follow-up drafts**.
    Gmail ([GMAIL.md](GMAIL.md)) or a Jira issue. Delivery state and every decision
    are kept in the draft history and the audit log.
 
+### How drafts are written and checked
+
+The drafting graph is `draft → validate → check_facts`. The model sees only reviewed facts: meeting title and date, task, owner, deadline wording, resolved deadline date, priority, sender name and the evidence quotes with speakers. It never sees recipients. Emails follow a fixed shape: greeting, the meeting, the action in plain words, the deadline, the quoted evidence, and a sign-off. After the model writes the draft:
+- the "As discussed:" line is replaced with the exact transcript quote;
+- a Jira description is built entirely from the reviewed facts (the model writes only the summary line);
+- `check_facts` warns the reviewer, and never rewrites the text, when the draft:
+  - mentions a date that is not a reviewed date;
+  - uses the meeting date as a deadline;
+  - implies a deadline when none was agreed;
+  - misquotes the evidence;
+  - leaves out or invents urgency;
+  - contains placeholders such as `[Your Name]`.
+
+Warnings are recalculated after every edit and shown above the draft.
+
 Approval of a commitment and approval of its follow-up are separate decisions.
 Normalized PostgreSQL storage, Slack, Calendar and automatic escalation remain
 later work.

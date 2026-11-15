@@ -8,6 +8,7 @@ type Draft = { id: string; meeting_id: string; meeting_title: string; status: st
   source: { task: string; owner: string | null; deadline: string | null; evidence: { quote: string }[] };
   policy: { can_approve: boolean; violations: string[]; approvals_required: number };
   partial_approvals?: { by: string; label: string; at: string }[];
+  draft_warnings?: string[];
   approval: { approved_by_label?: string; admin_override?: boolean } | null;
   delivery?: { status: string; detail?: string; sender?: string; message_id?: string; url?: string } | null;
   rights: { can_edit: boolean; can_decide: boolean; can_override: boolean; can_organize: boolean; assignee_id: string | null };
@@ -101,6 +102,7 @@ export function ArtifactWorkspace({source, onMeeting, queue=false}: {source: Dra
       {draft.source.evidence.map((e,i)=><blockquote dir="auto" key={i}>{e.quote}</blockquote>)}
       {!draft.source_current && <p role="status" className="error">The source commitment changed. Review it in the meeting and create a new draft.</p>}
       {draft.policy.violations.map(reason=><p className="error" key={reason}>{reason}</p>)}
+      {!!draft.draft_warnings?.length && <div className="draft-warnings" role="status"><strong>Check before approving:</strong><ul>{draft.draft_warnings.map(w=><li key={w}>{w}</li>)}</ul></div>}
       {draft.approval && draft.status==='approved' && <p className="muted">Approved by {draft.approval.approved_by_label}{draft.approval.admin_override ? ' (admin override)' : ''}</p>}
       {draft.delivery && <p className={draft.delivery.status==='failed' ? 'error' : 'muted'}>Delivery: {draft.delivery.status.replace('_',' ')}{draft.delivery.detail ? ` · ` : ''}{draft.delivery.url && <> · <a href={draft.delivery.url} target="_blank" rel="noreferrer">open issue</a></>}</p>}
       {draft.approval_valid && draft.delivery?.status!=='sent' && draft.delivery?.status!=='sending' && <button className="primary" disabled={busy} onClick={()=>void send()}>{draft.delivery?.status==='failed' ? 'Try again' : draft.channel==='jira' ? 'Create issue now' : 'Send now'}</button>}
