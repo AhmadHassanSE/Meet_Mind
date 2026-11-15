@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Zap } from 'lucide-react';
+import { Logo } from './ui';
 import { api, type Me } from './api';
 
 /** Sign-in and sign-up. The first account in a new workspace becomes its admin. */
@@ -17,7 +17,7 @@ export function AuthScreen({ mode, onSignedIn, navigate }: { mode: 'login' | 'si
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   }
   return <div className="auth-shell"><form className="panel form auth-card" onSubmit={e => { e.preventDefault(); void submit(); }}>
-    <div className="brand"><Zap/><strong>MeetMind</strong></div>
+    <div className="brand"><Logo size={34}/><strong>MeetMind</strong></div>
     <h1>{signup ? (config?.has_users === false ? 'Set up your workspace' : 'Create your account') : 'Sign in'}</h1>
     {config?.has_users === false && <p className="muted">This is the first account, so it becomes the workspace admin and an organizer. Existing local meetings are assigned to it.</p>}
     {signup && config?.has_users && <p className="muted">New accounts start as members. Ask an admin for organizer access to create meetings.</p>}

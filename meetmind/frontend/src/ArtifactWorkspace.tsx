@@ -77,7 +77,7 @@ export function ArtifactWorkspace({source, onMeeting, queue=false}: {source: Dra
   const second=Boolean(draft && partial.length && draft.policy.approvals_required>1 && draft.rights.can_organize);
   const override=Boolean(draft && !draft.rights.can_decide && !second && draft.rights.can_override);
   const decidable=open && Boolean(draft && (draft.rights.can_decide || second || override));
-  return <><p className="eyebrow">REVIEWED FOLLOW-UP</p><h1>{queue ? 'My approvals' : 'Follow-up drafts'}</h1>
+  return <><h1>{queue ? 'My approvals' : 'Follow-up drafts'}</h1>
     <p className="muted">{queue ? 'Drafts for action items you own (or organize without an owner) that are waiting for your decision.'
       : 'Create an email from an approved commitment, check its content and recipients, then the item owner approves or rejects the draft. Delivery connections are coming next.'}</p>
     {error && <p role="alert" className="error">{error}</p>}

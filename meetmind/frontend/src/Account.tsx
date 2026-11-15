@@ -27,7 +27,7 @@ export function Account({ me, onChanged }: { me: Me; onChanged: () => Promise<vo
     try { await action(); setMessage(done); } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   }
   const request = me.organizer_request;
-  return <><p className="eyebrow">ACCOUNT</p><h1>{me.name}</h1>
+  return <><h1>{me.name}</h1>
     <p className="muted">{me.email} · {me.role === 'organizer' ? 'Organizer' : 'Member'}{me.is_admin ? ' · Admin' : ''}</p>
     {error && <p role="alert" className="error">{error}</p>}{message && <p role="status" className="mint">{message}</p>}
     <div className="account-grid">

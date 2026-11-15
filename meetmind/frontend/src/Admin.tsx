@@ -25,7 +25,7 @@ export function Admin({ me }: { me: Me }) {
     try { await action(); await load(); setMessage(done); } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   }
   const update = (user: UserRow, change: Partial<UserRow>, done: string) => run(() => api(`/admin/users/${user.id}`, 'PATCH', change), done);
-  return <><p className="eyebrow">ADMIN</p><h1>Workspace administration</h1>
+  return <><h1>Workspace administration</h1>
     <p className="muted">Admins oversee the workspace. Business approvals belong to item owners and organizers; an admin override must be justified and is audited.</p>
     {error && <p role="alert" className="error">{error}</p>}{message && <p role="status" className="mint">{message}</p>}
     <div className="tabs" role="tablist">{([['requests', `Organizer requests (${requests.length})`], ['users', 'Users'], ['audit', 'Audit log'], ['jira', 'Jira'], ['settings', 'Settings']] as const).map(([id, label]) =>

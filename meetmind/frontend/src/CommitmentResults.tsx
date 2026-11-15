@@ -21,9 +21,9 @@ export type CommitmentMeeting = {
 };
 type ReviewHandler = (id: string, data: ReviewData) => Promise<void>;
 type AssignHandler = (id: string, revision: number, userId: string | null) => Promise<void>;
-type Rights = { access?: Access | null; directory?: DirectoryUser[]; onAssign?: AssignHandler };
+type Rights = { access?: Access | null; directory?: DirectoryUser[]; onAssign?: AssignHandler; onShowSource?: (ids: number[]) => void };
 
-function Result({ item, meeting, onReview, onDraft, disabled, access, directory = [], onAssign }: { item: Commitment; meeting: CommitmentMeeting; onReview: ReviewHandler; onDraft?: (item: Commitment)=>void; disabled: boolean } & Rights) {
+function Result({ item, meeting, onReview, onDraft, disabled, access, directory = [], onAssign, onShowSource }: { item: Commitment; meeting: CommitmentMeeting; onReview: ReviewHandler; onDraft?: (item: Commitment)=>void; disabled: boolean } & Rights) {
   // Without access info (older callers) keep the previous single-user behaviour.
   const organize = access ? access.can_organize : true;
   const owned = Boolean(item.id && access?.owned_items.includes(item.id));
@@ -60,7 +60,7 @@ function Result({ item, meeting, onReview, onDraft, disabled, access, directory 
         <option value="">Not linked</option>
         {directory.map(user => <option key={user.id} value={user.id}>{user.name} ({user.email})</option>)}
       </select></label>}
-    {item.evidence?.length ? item.evidence.map((e, i) => <blockquote key={i}><small className="mint">{e.source_ids.map(id => `#${id}`).join(', ')}{e.speaker ? ` · ${e.speaker}` : ''}{e.start != null ? ` · ${e.start.toFixed(1)}s–${e.end?.toFixed(1)}s` : ''}</small><p dir="auto">{e.quote}</p></blockquote>) : <blockquote>{meeting.segments.find(s => s.id === item.source_id)?.source}</blockquote>}
+    {item.evidence?.length ? item.evidence.map((e, i) => <blockquote key={i}><small className="mint">{e.source_ids.map(id => `#${id}`).join(', ')}{e.speaker ? ` · ${e.speaker}` : ''}{e.start != null ? ` · ${e.start.toFixed(1)}s–${e.end?.toFixed(1)}s` : ''}</small><p dir="auto">{e.quote}</p>{onShowSource && e.source_ids.length > 0 && <button type="button" className="text-button" onClick={() => onShowSource(e.source_ids)}>Show in transcript</button>}</blockquote>) : <blockquote>{meeting.segments.find(s => s.id === item.source_id)?.source}</blockquote>}
     {!!item.review_reasons?.length && <details><summary>Review details</summary><ul>{item.review_reasons.map(reason => <li key={reason}>{reason.replaceAll('_', ' ')}</li>)}</ul></details>}
     {!!item.review_history?.length && <details className="review-history"><summary>Review history ({item.review_history.length})</summary>
       <p className="muted">Original extraction: {item.original?.task} · {item.original?.owner || 'Unresolved'} · {item.original?.deadline || 'Unresolved'}</p>

@@ -72,7 +72,7 @@ export function MeetingBot({ onReady }: { onReady: (id: string) => Promise<void>
     catch (e) { setError((e as Error).message); }
     finally { setBusy(false); }
   }
-  return <><p className="eyebrow">LIVE MEETING CAPTURE</p><h1>Google Meet browser bot</h1>
+  return <><h1>Google Meet browser bot</h1>
     <p className="muted">Send a separate browser participant into your meeting. The host admits the bot; after recording, MeetMind transcribes locally.</p>
     <p className="muted">The Chrome extension is still available for recording from your own meeting tab. This bot uses a separate browser window and captures incoming meeting audio with its microphone and camera disabled.</p>
     {error && <p role="alert" className="error">{error}</p>}

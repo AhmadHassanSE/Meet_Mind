@@ -102,7 +102,7 @@ export function UploadMeeting({ onReady }: { onReady: (id: string) => Promise<vo
     finally { setBusy(false); submitting.current = false; }
   }
 
-  return <><p className="eyebrow">CAPTURE THE CONVERSATION</p><h1>Upload a meeting</h1><p className="muted">Paste a transcript, upload audio, or turn a meeting recording into searchable text.</p>
+  return <><h1>Upload a meeting</h1><p className="muted">Paste a transcript, upload audio, or turn a meeting recording into searchable text.</p>
     <form className="panel form ingestion-form" onSubmit={e => { e.preventDefault(); void submit(); }}>
       <div className="upload-tabs" role="tablist" aria-label="Meeting input type">{tabs.map(t => <button type="button" role="tab" aria-selected={tab === t.id} disabled={running} key={t.id} className={tab === t.id ? 'primary' : 'tab-button'} onClick={() => { setTab(t.id); setFile(null); setError(''); setJob(null); }}><t.icon size={17}/>{t.label}</button>)}</div>
       {error && <div role="alert" className="error">{error}</div>}
