@@ -57,4 +57,4 @@ Approved follow-up emails are sent from the **approver's own Gmail account**. Me
 - revoke on disconnect;
 - interrupted-send recovery.
 
-A live send with a real Google account still has to be done and recorded once the OAuth client exists.
+A live send through the meeting workflow succeeded on 15 Nov 2026 (Gmail message id `1a1de13bdd37be42`); see `docs/development-evidence.md`.
