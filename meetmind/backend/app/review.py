@@ -1,0 +1,82 @@
+"""Human review preserves extraction evidence and records every decision."""
+from datetime import date, datetime, timezone
+from copy import deepcopy
+from typing import Literal
+from uuid import uuid4
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from . import deadlines
+
+
+class ReviewInput(BaseModel):
+    model_config = ConfigDict(extra='forbid', str_strip_whitespace=True)
+    revision: int = Field(ge=0)
+    task: str = Field(min_length=1, max_length=1000)
+    owner: str | None = Field(max_length=200)
+    deadline: str | None = Field(max_length=200)
+    decision: Literal['pending', 'approved', 'rejected']
+    note: str = Field(default='', max_length=2000)
+    # A person may confirm the calendar date and priority; otherwise they are derived again.
+    deadline_date: date | None = None
+    priority: Literal['high', 'normal', 'low'] | None = None
+
+
+def initialize(meeting):
+    for item in meeting.get('actions', []) + meeting.get('action_candidates', []):
+        item.setdefault('id', str(uuid4()))
+        item.setdefault('revision', 0)
+        item.setdefault('review_status', 'pending')
+
+
+def has_reviews(meeting):
+    return any(item.get('review_history') for item in
+               meeting.get('actions', []) + meeting.get('action_candidates', []))
+
+
+def apply(meeting, item_id, data, user=None):
+    for collection in ('actions', 'action_candidates'):
+        item = next((item for item in meeting.get(collection, []) if item['id'] == item_id), None)
+        if item is not None:
+            break
+    else:
+        raise LookupError('Commitment not found')
+    if item['revision'] != data.revision:
+        raise RuntimeError('This item changed. Reload the meeting before reviewing it again.')
+    if data.decision == 'approved' and item.get('kind') == 'cancellation':
+        raise ValueError('A cancellation cannot be approved as a task. Review the affected commitment instead.')
+    if data.decision == 'approved' and (
+            item.get('original', item).get('status') == 'possible_cancellation') and not data.note:
+        raise ValueError('Add a review note explaining the cancellation evidence before approving this task.')
+    before = {key: deepcopy(item.get(key)) for key in
+              ('task', 'owner', 'deadline', 'deadline_normalized', 'priority', 'owner_method', 'status',
+               'review_status', 'needs_review')}
+    if 'original' not in item:
+        item['original'] = deepcopy(item)
+    reference = (item.get('deadline_resolution') or {}).get('reference_date')
+    if data.deadline_date:
+        resolution = {'date': data.deadline_date.isoformat(), 'method': 'human_review', 'reason': None}
+    elif reference:
+        resolution = deadlines.normalize(data.deadline, date.fromisoformat(reference))
+    else:
+        resolution = {'date': None, 'method': 'none', 'reason': 'meeting_date_unknown'}
+    item.update(task=data.task, owner=data.owner or None, deadline=data.deadline or None,
+                deadline_normalized=resolution['date'],
+                deadline_resolution={**(item.get('deadline_resolution') or {}), **resolution},
+                priority=data.priority or item.get('priority', 'normal'), review_status=data.decision,
+                needs_review=data.decision == 'pending', revision=item['revision'] + 1)
+    item['owner_method'] = ('human_review' if item['owner'] != item['original'].get('owner')
+                            else item['original'].get('owner_method', 'unresolved'))
+    item['status'] = data.decision if data.decision != 'pending' else item['original'].get('status', 'proposed')
+    after = {key: deepcopy(item.get(key)) for key in before}
+    item.setdefault('review_history', []).append({
+        'revision': item['revision'], 'at': datetime.now(timezone.utc).isoformat(),
+        'decision': data.decision, 'note': data.note, 'before': before, 'after': after,
+        'reviewer': user.label if user else 'system', 'reviewer_id': user.id if user else None})
+    if data.decision == 'approved' and collection == 'action_candidates':
+        meeting[collection].remove(item)
+        meeting.setdefault('actions', []).append(item)
+    elif data.decision != 'approved' and collection == 'actions' and item.get('kind') in {'suggestion', 'request', 'cancellation'}:
+        meeting[collection].remove(item)
+        meeting.setdefault('action_candidates', []).append(item)
+    meeting['commitment_revision'] = meeting.get('commitment_revision', 0) + 1

@@ -1,0 +1,15 @@
+{
+  "stage": "implementation-ready-for-colab-not-trained",
+  "target_macro_f1": 0.73,
+  "baseline_macro_f1": 0.5292777157237077,
+  "new_macro_f1": null,
+  "backend_tests_passed": 124,
+  "exact_resume_tested": true,
+  "shared_encoding_parity_tested": true,
+  "existing_real_checkpoint_api_smoke_passed": true,
+  "input_archive_crc_and_hashes_verified": true,
+  "final_test_uploaded": false,
+  "serving_model_changed": false,
+  "baseline_model_weights_sha256": "5a70014dec35d58aa1c4661fc2d93cda5986d20e49b0eb317968f8bf78f472eb",
+  "input_zip_sha256": "48b185ab402cc5c73d87956764b83205a586a66543242f3e9f7ede5e178fe044"
+}

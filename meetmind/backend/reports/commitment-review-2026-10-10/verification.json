@@ -1,0 +1,28 @@
+{
+  "backend_tests": 74,
+  "review_tests": 7,
+  "frontend_build": "passed",
+  "deterministic_review_browser": "passed: edit, approval, rejection, promotion, cancellation restrictions, history, refresh, mobile",
+  "existing_ingestion_browser": "passed: caption upload, timestamps, persistence, media tabs, validation, mobile",
+  "real_local_pipeline_browser": [
+    {
+      "name": "Promise and deadline",
+      "result": "pass",
+      "actions": 1,
+      "candidates": 0,
+      "elapsed_ms": 6346
+    },
+    {
+      "name": "Cancellation and suggestions",
+      "result": "pass",
+      "actions": 1,
+      "candidates": 2,
+      "elapsed_ms": 19623
+    }
+  ],
+  "limitations": [
+    "Functional checks are not commitment extraction accuracy evaluation.",
+    "Local reviewer identity is not authenticated.",
+    "Approval does not execute tasks or integrate with external services."
+  ]
+}

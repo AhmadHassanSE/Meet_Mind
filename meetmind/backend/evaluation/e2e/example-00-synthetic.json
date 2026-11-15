@@ -1,0 +1,13 @@
+{
+  "id": "example-00-synthetic",
+  "notes": "SYNTHETIC FORMAT EXAMPLE written by the developers. Not evaluation evidence: replace or add real, consented team-annotated transcripts (see evaluation/GUIDELINE.md).",
+  "language": "en",
+  "meeting_date": "2026-11-11",
+  "transcript": "Sara: I will send the report by Friday.\nAli: We should book the room for Monday or Friday.\nAli: Sure, I can update the slides tomorrow.\nSara: Actually, cancel the budget report.",
+  "gold": [
+    {"kind": "commitment", "task": "Send the report", "owner": "Sara", "deadline_date": "2026-11-13", "quote": "I will send the report by Friday."},
+    {"kind": "suggestion", "task": "Book the room", "owner": null, "deadline_date": null, "quote": "We should book the room for Monday or Friday."},
+    {"kind": "commitment", "task": "Update the slides", "owner": "Ali", "deadline_date": "2026-11-12", "quote": "Sure, I can update the slides tomorrow."},
+    {"kind": "cancellation", "task": "Cancel the budget report", "owner": null, "deadline_date": null, "quote": "Actually, cancel the budget report."}
+  ]
+}

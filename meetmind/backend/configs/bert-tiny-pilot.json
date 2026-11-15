@@ -1,0 +1,19 @@
+{
+  "model": "google/bert_uncased_L-2_H-128_A-2",
+  "revision": "main",
+  "data": "data/ami-da-v1",
+  "output": "runs/bert-tiny-pilot-v1",
+  "stage": "cpu-pilot",
+  "seed": 42,
+  "max_length": 96,
+  "batch_size": 32,
+  "eval_batch_size": 64,
+  "gradient_accumulation_steps": 1,
+  "epochs": 5,
+  "learning_rate": 0.0003,
+  "weight_decay": 0.01,
+  "class_weighting": "sqrt_inverse",
+  "patience": 2,
+  "cpu_threads": 4,
+  "max_train_examples": 24000
+}

@@ -1,0 +1,415 @@
+{
+  "cases": [
+    {
+      "case": "promise",
+      "seconds": 14.07,
+      "actions": [
+        {
+          "task": "send the project report",
+          "owner": "Sara",
+          "deadline": "by Friday",
+          "deadline_normalized": null,
+          "source_id": 1,
+          "source_ids": [
+            1
+          ],
+          "evidence": [
+            {
+              "quote": "I will send the project report by Friday.",
+              "source_ids": [
+                1
+              ],
+              "parent_source_id": 1,
+              "source_start": 0,
+              "source_end": 41,
+              "speaker": "Sara",
+              "start": null,
+              "end": null
+            }
+          ],
+          "kind": "commitment",
+          "status": "proposed",
+          "needs_review": true,
+          "review_reasons": [
+            "human_review_required",
+            "deadline_requires_meeting_date_and_review"
+          ],
+          "owner_method": "speaker",
+          "deadline_candidates": [
+            {
+              "text": "by Friday",
+              "start": 31,
+              "end": 40,
+              "method": "rule"
+            }
+          ],
+          "bert_signals": [
+            {
+              "source_id": 1,
+              "label": "off",
+              "score": 0.6701432466506958
+            }
+          ]
+        }
+      ],
+      "candidates": [],
+      "bert_model": {
+        "model_name": "google/bert_uncased_L-2_H-128_A-2",
+        "model_revision": "30b0a37ccaaa32f332884b96992754e246e48c5f",
+        "checkpoint_stage": "cpu-pilot",
+        "best_epoch": 5,
+        "validation_macro_f1": 0.42190680131994757,
+        "dataset_manifest_sha256": "f6cf4e2856ec3fd3fd29cd86b6678f60ce727cde9b4d067caa52f22e8844e9d1",
+        "model_weights_sha256": "5eadcdca43bb32fea03cfaf00f84c2e969d1cc792e3fa120e0c220763a0a7b9a",
+        "confidence_calibrated": false
+      },
+      "extraction": {
+        "version": "1.0",
+        "spacy": {
+          "status": "model installed",
+          "model": "en_core_web_sm",
+          "version": "3.8.0"
+        },
+        "discarded": [],
+        "source_units": 1,
+        "confidence_calibrated": false,
+        "warnings": [
+          "All results require review. Negation and cross-turn cancellation checks are conservative heuristics.",
+          "Relative deadlines retain source wording; calendar dates are not inferred."
+        ]
+      }
+    },
+    {
+      "case": "suggestion and negation",
+      "seconds": 10.2,
+      "actions": [],
+      "candidates": [
+        {
+          "task": "redesign",
+          "owner": null,
+          "deadline": null,
+          "deadline_normalized": null,
+          "source_id": 1,
+          "source_ids": [
+            1
+          ],
+          "evidence": [
+            {
+              "quote": "We should redesign the dashboard.",
+              "source_ids": [
+                1
+              ],
+              "parent_source_id": 1,
+              "source_start": 0,
+              "source_end": 33,
+              "speaker": "Sara",
+              "start": null,
+              "end": null
+            }
+          ],
+          "kind": "suggestion",
+          "status": "suggestion",
+          "needs_review": true,
+          "review_reasons": [
+            "human_review_required",
+            "ambiguous_owner_pronoun",
+            "deadline_missing"
+          ],
+          "owner_method": "unresolved",
+          "deadline_candidates": [],
+          "bert_signals": [
+            {
+              "source_id": 1,
+              "label": "sug",
+              "score": 0.8740668296813965
+            }
+          ]
+        },
+        {
+          "task": "send",
+          "owner": "Ali",
+          "deadline": null,
+          "deadline_normalized": null,
+          "source_id": 2,
+          "source_ids": [
+            2
+          ],
+          "evidence": [
+            {
+              "quote": "I will not send the budget report.",
+              "source_ids": [
+                2
+              ],
+              "parent_source_id": 2,
+              "source_start": 0,
+              "source_end": 34,
+              "speaker": "Ali",
+              "start": null,
+              "end": null
+            }
+          ],
+          "kind": "cancellation",
+          "status": "cancellation",
+          "needs_review": true,
+          "review_reasons": [
+            "human_review_required",
+            "negated_or_cancelled_source",
+            "deadline_missing"
+          ],
+          "owner_method": "speaker",
+          "deadline_candidates": [],
+          "bert_signals": [
+            {
+              "source_id": 2,
+              "label": "off",
+              "score": 0.6967644095420837
+            }
+          ]
+        }
+      ],
+      "bert_model": {
+        "model_name": "google/bert_uncased_L-2_H-128_A-2",
+        "model_revision": "30b0a37ccaaa32f332884b96992754e246e48c5f",
+        "checkpoint_stage": "cpu-pilot",
+        "best_epoch": 5,
+        "validation_macro_f1": 0.42190680131994757,
+        "dataset_manifest_sha256": "f6cf4e2856ec3fd3fd29cd86b6678f60ce727cde9b4d067caa52f22e8844e9d1",
+        "model_weights_sha256": "5eadcdca43bb32fea03cfaf00f84c2e969d1cc792e3fa120e0c220763a0a7b9a",
+        "confidence_calibrated": false
+      },
+      "extraction": {
+        "version": "1.0",
+        "spacy": {
+          "status": "model installed",
+          "model": "en_core_web_sm",
+          "version": "3.8.0"
+        },
+        "discarded": [],
+        "source_units": 2,
+        "confidence_calibrated": false,
+        "warnings": [
+          "All results require review. Negation and cross-turn cancellation checks are conservative heuristics.",
+          "Relative deadlines retain source wording; calendar dates are not inferred."
+        ]
+      }
+    },
+    {
+      "case": "later cancellation",
+      "seconds": 10.94,
+      "actions": [
+        {
+          "task": "send",
+          "owner": "Sara",
+          "deadline": "Friday",
+          "deadline_normalized": null,
+          "source_id": 1,
+          "source_ids": [
+            1,
+            2
+          ],
+          "evidence": [
+            {
+              "quote": "I will send the project report by Friday.",
+              "source_ids": [
+                1
+              ],
+              "parent_source_id": 1,
+              "source_start": 0,
+              "source_end": 41,
+              "speaker": "Sara",
+              "start": null,
+              "end": null
+            },
+            {
+              "quote": "Cancel the project report.",
+              "source_ids": [
+                2
+              ],
+              "parent_source_id": 2,
+              "source_start": 0,
+              "source_end": 26,
+              "speaker": "Ali",
+              "start": null,
+              "end": null
+            }
+          ],
+          "kind": "commitment",
+          "status": "possible_cancellation",
+          "needs_review": true,
+          "review_reasons": [
+            "human_review_required",
+            "deadline_requires_meeting_date_and_review",
+            "later_cancellation_requires_review"
+          ],
+          "owner_method": "speaker",
+          "deadline_candidates": [
+            {
+              "text": "by Friday",
+              "start": 31,
+              "end": 40,
+              "method": "rule"
+            }
+          ],
+          "bert_signals": [
+            {
+              "source_id": 1,
+              "label": "off",
+              "score": 0.670143187046051
+            }
+          ]
+        }
+      ],
+      "candidates": [
+        {
+          "task": "cancel",
+          "owner": null,
+          "deadline": null,
+          "deadline_normalized": null,
+          "source_id": 2,
+          "source_ids": [
+            2
+          ],
+          "evidence": [
+            {
+              "quote": "Cancel the project report.",
+              "source_ids": [
+                2
+              ],
+              "parent_source_id": 2,
+              "source_start": 0,
+              "source_end": 26,
+              "speaker": "Ali",
+              "start": null,
+              "end": null
+            }
+          ],
+          "kind": "cancellation",
+          "status": "cancellation",
+          "needs_review": true,
+          "review_reasons": [
+            "human_review_required",
+            "negated_or_cancelled_source",
+            "owner_not_supported_as_assignee",
+            "deadline_missing"
+          ],
+          "owner_method": "unresolved",
+          "deadline_candidates": [],
+          "bert_signals": [
+            {
+              "source_id": 2,
+              "label": "inf",
+              "score": 0.3533363342285156
+            }
+          ]
+        }
+      ],
+      "bert_model": {
+        "model_name": "google/bert_uncased_L-2_H-128_A-2",
+        "model_revision": "30b0a37ccaaa32f332884b96992754e246e48c5f",
+        "checkpoint_stage": "cpu-pilot",
+        "best_epoch": 5,
+        "validation_macro_f1": 0.42190680131994757,
+        "dataset_manifest_sha256": "f6cf4e2856ec3fd3fd29cd86b6678f60ce727cde9b4d067caa52f22e8844e9d1",
+        "model_weights_sha256": "5eadcdca43bb32fea03cfaf00f84c2e969d1cc792e3fa120e0c220763a0a7b9a",
+        "confidence_calibrated": false
+      },
+      "extraction": {
+        "version": "1.0",
+        "spacy": {
+          "status": "model installed",
+          "model": "en_core_web_sm",
+          "version": "3.8.0"
+        },
+        "discarded": [],
+        "source_units": 2,
+        "confidence_calibrated": false,
+        "warnings": [
+          "All results require review. Negation and cross-turn cancellation checks are conservative heuristics.",
+          "Relative deadlines retain source wording; calendar dates are not inferred."
+        ]
+      }
+    },
+    {
+      "case": "ambiguous owner",
+      "seconds": 6.11,
+      "actions": [
+        {
+          "task": "book",
+          "owner": null,
+          "deadline": "tomorrow",
+          "deadline_normalized": null,
+          "source_id": 1,
+          "source_ids": [
+            1
+          ],
+          "evidence": [
+            {
+              "quote": "We will book the meeting room tomorrow.",
+              "source_ids": [
+                1
+              ],
+              "parent_source_id": 1,
+              "source_start": 0,
+              "source_end": 39,
+              "speaker": "Sara",
+              "start": null,
+              "end": null
+            }
+          ],
+          "kind": "commitment",
+          "status": "proposed",
+          "needs_review": true,
+          "review_reasons": [
+            "human_review_required",
+            "ambiguous_owner_pronoun",
+            "deadline_requires_meeting_date_and_review"
+          ],
+          "owner_method": "unresolved",
+          "deadline_candidates": [
+            {
+              "text": "tomorrow",
+              "start": 30,
+              "end": 38,
+              "method": "rule"
+            }
+          ],
+          "bert_signals": [
+            {
+              "source_id": 1,
+              "label": "off",
+              "score": 0.502411961555481
+            }
+          ]
+        }
+      ],
+      "candidates": [],
+      "bert_model": {
+        "model_name": "google/bert_uncased_L-2_H-128_A-2",
+        "model_revision": "30b0a37ccaaa32f332884b96992754e246e48c5f",
+        "checkpoint_stage": "cpu-pilot",
+        "best_epoch": 5,
+        "validation_macro_f1": 0.42190680131994757,
+        "dataset_manifest_sha256": "f6cf4e2856ec3fd3fd29cd86b6678f60ce727cde9b4d067caa52f22e8844e9d1",
+        "model_weights_sha256": "5eadcdca43bb32fea03cfaf00f84c2e969d1cc792e3fa120e0c220763a0a7b9a",
+        "confidence_calibrated": false
+      },
+      "extraction": {
+        "version": "1.0",
+        "spacy": {
+          "status": "model installed",
+          "model": "en_core_web_sm",
+          "version": "3.8.0"
+        },
+        "discarded": [],
+        "source_units": 1,
+        "confidence_calibrated": false,
+        "warnings": [
+          "All results require review. Negation and cross-turn cancellation checks are conservative heuristics.",
+          "Relative deadlines retain source wording; calendar dates are not inferred."
+        ]
+      }
+    }
+  ],
+  "all_passed": true,
+  "dataset": "synthetic functional checks; not an accuracy benchmark"
+}

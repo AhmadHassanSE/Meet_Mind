@@ -1,0 +1,157 @@
+# MeetMind: Iterations 1 and 2
+
+Fresh implementation. The sibling `meeting-transcription-agent` directory is reference only.
+
+## Iteration 2: workflow, approvals and execution
+
+`main` combines:
+- multilingual ingestion and commitment review;
+- the Meet extension and browser bot;
+- BERT experiment tooling;
+- accounts and roles;
+- the LangGraph meeting workflow;
+- the policy rules engine;
+- follow-up drafting with separate owner approval;
+- execution through Gmail and Jira.
+
+An approved draft is sent or created at most once, and only while its approval is valid. Guides: [workflow](backend/WORKFLOW.md), [drafts and policy](backend/ARTIFACTS.md), [accounts and roles](backend/AUTH.md), [Gmail](backend/GMAIL.md), [Jira](backend/JIRA.md). Live Gmail and Jira checks need the team's own OAuth client and Jira site.
+
+## Accounts and roles
+
+Every page and API route needs a signed-in user. The first account created in a
+new database becomes the workspace **admin** and an **organizer**, and existing
+local meetings are assigned to it. Later accounts are **members** until an admin
+approves their organizer request. Organizers create and review meetings and link
+each action item to its **owner** account. The owner then approves that item's
+follow-up draft. The Chrome extension needs a capture token from **Account**.
+See [backend/AUTH.md](backend/AUTH.md) for the permission matrix, sessions,
+tokens and audit trail.
+
+## Meeting workflow
+
+**Start workflow** on a meeting runs a LangGraph process: extraction, then a pause for the organizer's commitment review and recipient choice, drafting, a policy check, and a pause for each owner's approval before anything is executed. Paused runs survive restarts, and failed steps can be retried. See [backend/WORKFLOW.md](backend/WORKFLOW.md).
+
+## Run locally (two PowerShell terminals)
+
+Prerequisites: Node.js, uv, Python 3.13 (uv can provision it), FFmpeg on PATH, and Ollama running with `llama3.2:latest` installed. Run the commands below from the repository root in separate terminals.
+
+Backend:
+```powershell
+cd meetmind/backend
+$env:UV_PROJECT_ENVIRONMENT='.venv-nlp'
+uv sync --extra nlp --extra agents --extra bot --group dev
+# Supply the selected checkpoint as described in backend/BERT_BASE_COMPARISON.md.
+uv run --extra nlp uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
+
+Frontend:
+```powershell
+cd meetmind/frontend
+npm.cmd install
+npm.cmd run dev
+```
+
+Open the localhost URL printed by Vite. Development requests proxy to the local backend. API documentation: http://127.0.0.1:8000/docs
+
+Configuration: backend environment variables `OLLAMA_URL`, `OLLAMA_MODEL`, `MEETMIND_DB`, `WHISPER_MODEL`, `FFMPEG_PATH`. Defaults: localhost:11434, llama3.2:latest, backend/meetmind.db, small, ffmpeg. Frontend `MEETMIND_BACKEND_URL` overrides the development proxy target (default localhost:8000). No hosted AI provider or API key is used. Dependency/model downloads require internet; meeting transcription and extraction run locally. First media ingestion downloads Whisper weights if not cached, so prepare the model before an offline demo. A local model directory can be supplied as `WHISPER_MODEL`.
+
+## Multilingual input
+
+English, Urdu script, Roman Urdu transcripts are accepted. Use the Meeting language selector. Urdu/Roman Urdu analysis translates locally before English BERT; original text remains evidence. Install `ollama pull qwen3:4b` for the multilingual path. See [multilingual setup and evidence limits](backend/MULTILINGUAL.md).
+
+## Google Meet capture (Chrome extension)
+
+The `extension/` folder is a Chrome (116+) extension that records a Google Meet tab and sends it to the local backend. No Google account integration or API key is needed, so it works with free Gmail. The tab audio and your microphone are mixed and uploaded in chunks to `POST /api/meet/sessions/...`; when you stop, the backend transcribes locally with Whisper, labels speakers from hints read off Meet's live captions, and saves a `google_meet` meeting you can classify and extract like any other. See `extension/README.md` for setup and limits.
+
+Extra configuration: `MEETMIND_MEET_SESSION_IDLE_SECONDS` (default 900; a capture session with no upload for this long is discarded so abandoned tabs do not block new recordings), `MEETMIND_MEET_LAG_MS` (default 500, how long Meet captions lag behind speech) and `MEETMIND_MEET_MIN_CONFIDENCE` (default 0.4, minimum overlap margin before a speaker name is attached; below it the utterance stays "Unknown speaker").
+
+### Speaker separation with pyannote (optional fallback)
+
+By default the caption hints (who Meet shows as speaking) label segments directly. With the `diarization` extra, pyannote.audio acts as a fallback: it runs only when there are no hints, or when more than 30% of segments stay unattributed. It groups the recording into distinct voices, and the hints then only name each voice. This gives separate "Speaker 1, Speaker 2" labels even when no names match.
+
+```powershell
+uv sync --extra nlp --extra diarization --group dev
+uv run --extra nlp --extra diarization uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
+
+The default model `pyannote/speaker-diarization-community-1` is gated: open its page on Hugging Face and accept the conditions, create a read token, then set `HF_TOKEN` (or run `hf auth login`) before starting the backend. If pyannote or the token is missing, or it fails, the meeting still saves with caption-hint labels and the meeting page says why. Configuration: `MEETMIND_DIARIZATION` (`auto` default = fallback only, `always` = run on every meeting, `off` to disable), `MEETMIND_MEET_FALLBACK_UNATTRIBUTED` (default `0.3`, unattributed share that triggers the fallback), `MEETMIND_DIARIZATION_MODEL`, `MEETMIND_MAX_SPEAKERS` (optional upper bound). When it runs, it runs on CPU after transcription, loads the model per meeting and frees it afterwards, so expect extra minutes and memory for long meetings. A Whisper segment is assigned to one speaker, so a long segment containing two voices takes the dominant one.
+
+Recording other people needs their knowledge. The extension shows a red banner on the Meet page and a REC badge while it records; tell participants before you start.
+
+## Browser meeting bot
+
+A separate browser participant is now available alongside the extension. Install the backend `bot` extra and use **Google Meet bot** in the sidebar. Host admission and, where required, manual sign-in to a dedicated bot account are required. See [browser bot setup, API and validation limits](backend/BOT.md).
+
+## Current scope
+
+### Commitment review
+
+After extraction, choose **Review / edit** to correct task, owner and deadline,
+then save for review, approve or reject. Original evidence and a dated decision
+history remain available after refresh. Suggestions/requests need explicit
+approval to become commitments; cancellation evidence requires careful review.
+Reviewed meetings cannot be re-extracted in place: upload a new copy to preserve
+your decisions. See [backend/COMMITMENTS.md](backend/COMMITMENTS.md) for the API
+and review rules. Restart the backend and frontend after updating the code.
+
+### Fine-tuned BERT (10 October update)
+
+The primary dialogue-act classifier now has official AMI dataset preparation,
+fine-tuning, validation-only checkpoint selection, baseline evaluation and a
+local classifier endpoint/UI. See [backend/BERT.md](backend/BERT.md) for exact
+setup and recorded experiment boundaries. Use the `nlp` extra and `.venv-nlp`
+environment for BERT. Full BERT-base GPU training is complete: the selected
+3e-5 candidate achieved validation macro F1 0.5293 versus the tiny pilot's
+0.4219. The default checkpoint folder is `backend/models/dialogue-bert-base-v1`;
+weights are distributed separately from Git. `BERT_MODEL_PATH` overrides it.
+Restart the backend after installing the selected checkpoint. Dialogue-act labels
+are kept separate from confirmed action commitments and Ollama extraction.
+
+A new [BERT-base macro F1 improvement study](backend/BERT_F1_IMPROVEMENT.md)
+provides three resumable Colab candidates targeting 0.73 macro F1 on the unchanged
+15-class split. The target has not been measured as achieved; the current model
+and its reported score remain unchanged until returned GPU results are verified.
+
+The four upload tabs support:
+
+| Input | Formats | Processing |
+|---|---|---|
+| Text / paste | Plain text | Normalize speaker turns |
+| Transcript file | TXT, MD, DOCX, VTT, SRT | Extract text; retain available caption timing and speaker labels |
+| Audio | WAV, MP3, M4A, OGG, FLAC, AAC | FFmpeg → mono 16 kHz PCM → local faster-whisper |
+| Meeting recording | MP4, WEBM, MOV, MKV | Extract audio → same local transcription pipeline |
+
+Transcript files: 2 MB maximum and 500,000 normalized characters. Pasted text: 500,000 characters. Media: 200 MB and two hours maximum. Actual codec support depends on the installed FFmpeg build. English and Urdu speech are supported through multilingual Whisper; select a language explicitly for short recordings and review the output; mixed English/Urdu speech is not supported. Audio/video speaker labels remain unknown; diarization and live Google Meet/Teams connections are future work. A silent recording or video without an audio track produces an explicit failure.
+
+Jobs are queued (one worker, three total admitted jobs), decoded, transcribed and saved. Polling progress comes from real backend stages/decoded time, not a simulated timer. Active job IDs survive browser refresh via localStorage. Restarting the backend marks unfinished jobs failed; re-upload is required (jobs do not auto-resume). Temporary media is deleted when a job finishes or fails; forced process termination may leave OS temporary files. Original recordings are not retained in the application database. Use a single backend process, without multiple workers, for this local job implementation. Cancellation is not implemented.
+
+All paths produce the same transcript segment fields: `id`, `speaker`, `text`, `source`, `start`, `end`, plus source lineage. New meetings preserve the original transcript and prepare sentence-sized utterances before analysis. See [transcript preparation](backend/PREPROCESSING.md) for report cleaning, token budgets, offsets and evidence. Meeting metadata includes source type, original filename and transcription model/duration where applicable. TXT/JSON/original-text exports are available for every meeting; VTT export requires positive timestamp ranges on all segments.
+
+SQLite persistence, meeting library/detail, health status and structured local extraction remain available. Extraction now combines BERT signals, spaCy owner/deadline evidence and Ollama proposals, with quoted sources and conservative cancellation checks. Suggestions, requests and cancellations are displayed separately. See [structured commitments](backend/COMMITMENTS.md) for setup, fields, tests and limitations. Results require review; source validation does not guarantee semantic correctness. Re-extraction is blocked once items are reviewed, so decisions are never overwritten. Deadlines are resolved to dates and priorities are detected (see COMMITMENTS.md). The team-annotation and end-to-end extraction tooling is in `backend/evaluation/`; the team's own labelled results are still to be added. AMI dialogue-act training and the held-out test evaluation are documented in BERT.md and `reports/bert-base-test-v1`. Nothing external happens without an approved draft.
+
+Fine-tuned BERT is the primary dialogue-act classifier. Ollama is the local commitment extractor and drafter; it does not replace BERT. SQLite is a local single-installation foundation; PostgreSQL remains the proposed relational target. Accounts, roles and an audit trail are included (AUTH.md). Production deployment is not: keep the backend bound to 127.0.0.1.
+
+## Checks
+```powershell
+cd backend
+uv run pytest
+cd ..\frontend
+npm.cmd run build
+```
+
+For real decoder/model smoke checks, from `meetmind/backend` run:
+```powershell
+uv run python -m scripts.smoke_media path/to/speech.wav path/to/recording.mp4
+```
+This uses an isolated temporary database and checks real media jobs plus transcript downloads. Use short, non-sensitive fixtures with speech. It is not an accuracy benchmark.
+
+For browser smoke checks, start backend/frontend against a dedicated test database (`MEETMIND_DB`), then from `meetmind/frontend` run `node scripts/smoke-ui.cjs`. Google Chrome is required. `MEETMIND_UI_URL` selects the frontend URL. This creates a fixture meeting in that database; it verifies caption upload, timing, persistence, validation and narrow-screen layout. Optionally set `MEETMIND_MEDIA_FIXTURE` to a short speech WAV containing "send the project report by Friday" to exercise actual media transcription through the browser as well.
+
+Prepare Whisper before evaluation (backend directory):
+```powershell
+uv run python -c "from faster_whisper import WhisperModel; WhisperModel('small', device='cpu', compute_type='int8')"
+```
+
+API: `POST /api/meetings` (pasted JSON); `POST /api/ingestion/transcript` and `/api/ingestion/media` (multipart `title` + `file`); `GET /api/ingestion/jobs/{id}`; `GET /api/meetings/{id}/transcript?format=txt|json|vtt`. Media uploads return HTTP 202; invalid uploads return 422, oversized media 413, full queue 429, and missing FFmpeg 503. Decoding/transcription failures are reported by the job's `failed` state, without creating an empty meeting.
+
+AI-assisted code must be reviewed and understood by its owners; disclose assistance in the evaluation report. No research performance results are claimed yet.

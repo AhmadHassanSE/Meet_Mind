@@ -1,0 +1,55 @@
+{
+  "backend_tests_passed": 67,
+  "real_checkpoint_api_smoke": "passed; repeat inference and persistence",
+  "browser_checks": [
+    {
+      "name": "ES2005a",
+      "segments": 23,
+      "analysis_and_refresh_ms": 19648,
+      "result": "pass"
+    },
+    {
+      "name": "ES2005b",
+      "segments": 22,
+      "analysis_and_refresh_ms": 4651,
+      "result": "pass"
+    }
+  ],
+  "commitment_functional_checks": [
+    {
+      "case": "promise",
+      "seconds": 26.85,
+      "model_weights_sha256": "5a70014dec35d58aa1c4661fc2d93cda5986d20e49b0eb317968f8bf78f472eb",
+      "actions": 1,
+      "candidates": 0
+    },
+    {
+      "case": "suggestion and negation",
+      "seconds": 15.13,
+      "model_weights_sha256": "5a70014dec35d58aa1c4661fc2d93cda5986d20e49b0eb317968f8bf78f472eb",
+      "actions": 0,
+      "candidates": 2
+    },
+    {
+      "case": "later cancellation",
+      "seconds": 14.11,
+      "model_weights_sha256": "5a70014dec35d58aa1c4661fc2d93cda5986d20e49b0eb317968f8bf78f472eb",
+      "actions": 1,
+      "candidates": 1
+    },
+    {
+      "case": "ambiguous owner",
+      "seconds": 7.13,
+      "model_weights_sha256": "5a70014dec35d58aa1c4661fc2d93cda5986d20e49b0eb317968f8bf78f472eb",
+      "actions": 1,
+      "candidates": 0
+    }
+  ],
+  "all_commitment_checks_passed": true,
+  "limitations": [
+    "Synthetic commitment checks are functional tests, not an accuracy benchmark.",
+    "Initial concurrent run failed on Ollama; sequential retry passed.",
+    "Independent full validation rerun did not complete while Windows reported insufficient paging memory.",
+    "Final test split not evaluated."
+  ]
+}

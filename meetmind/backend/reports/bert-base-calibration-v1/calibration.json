@@ -1,0 +1,8 @@
+{
+  "method": "temperature scaling",
+  "temperature": 1.2280782847701643,
+  "fitted_on": "validation",
+  "bins": 15,
+  "model_weights_sha256": "5a70014dec35d58aa1c4661fc2d93cda5986d20e49b0eb317968f8bf78f472eb",
+  "dataset_manifest_sha256": "f6cf4e2856ec3fd3fd29cd86b6678f60ce727cde9b4d067caa52f22e8844e9d1"
+}

@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="360" font-family="sans-serif" font-size="11">
+<rect x="40" y="40" width="260" height="260" fill="none" stroke="#888"/>
+<line x1="40" y1="300" x2="300" y2="40" stroke="#bbb" stroke-dasharray="4"/>
+<rect x="74.7" y="170.0" width="16.3" height="130.0" fill="#2f7d6d" opacity="0.8"/>
+<rect x="92.0" y="249.4" width="16.3" height="50.6" fill="#2f7d6d" opacity="0.8"/>
+<rect x="109.3" y="221.6" width="16.3" height="78.4" fill="#2f7d6d" opacity="0.8"/>
+<rect x="126.7" y="209.9" width="16.3" height="90.1" fill="#2f7d6d" opacity="0.8"/>
+<rect x="144.0" y="197.3" width="16.3" height="102.7" fill="#2f7d6d" opacity="0.8"/>
+<rect x="161.3" y="183.6" width="16.3" height="116.4" fill="#2f7d6d" opacity="0.8"/>
+<rect x="178.7" y="177.7" width="16.3" height="122.3" fill="#2f7d6d" opacity="0.8"/>
+<rect x="196.0" y="161.4" width="16.3" height="138.6" fill="#2f7d6d" opacity="0.8"/>
+<rect x="213.3" y="158.9" width="16.3" height="141.1" fill="#2f7d6d" opacity="0.8"/>
+<rect x="230.7" y="142.2" width="16.3" height="157.8" fill="#2f7d6d" opacity="0.8"/>
+<rect x="248.0" y="128.4" width="16.3" height="171.6" fill="#2f7d6d" opacity="0.8"/>
+<rect x="265.3" y="102.5" width="16.3" height="197.5" fill="#2f7d6d" opacity="0.8"/>
+<rect x="282.7" y="66.0" width="16.3" height="234.0" fill="#2f7d6d" opacity="0.8"/>
+<text x="40" y="32">validation before scaling: ECE 0.104</text>
+<text x="40" y="316">confidence →  (bars: accuracy)</text>
+<rect x="340" y="40" width="260" height="260" fill="none" stroke="#888"/>
+<line x1="340" y1="300" x2="600" y2="40" stroke="#bbb" stroke-dasharray="4"/>
+<rect x="374.7" y="213.3" width="16.3" height="86.7" fill="#2f7d6d" opacity="0.8"/>
+<rect x="392.0" y="239.9" width="16.3" height="60.1" fill="#2f7d6d" opacity="0.8"/>
+<rect x="409.3" y="213.3" width="16.3" height="86.7" fill="#2f7d6d" opacity="0.8"/>
+<rect x="426.7" y="199.0" width="16.3" height="101.0" fill="#2f7d6d" opacity="0.8"/>
+<rect x="444.0" y="187.1" width="16.3" height="112.9" fill="#2f7d6d" opacity="0.8"/>
+<rect x="461.3" y="174.8" width="16.3" height="125.2" fill="#2f7d6d" opacity="0.8"/>
+<rect x="478.7" y="165.1" width="16.3" height="134.9" fill="#2f7d6d" opacity="0.8"/>
+<rect x="496.0" y="151.3" width="16.3" height="148.7" fill="#2f7d6d" opacity="0.8"/>
+<rect x="513.3" y="138.3" width="16.3" height="161.7" fill="#2f7d6d" opacity="0.8"/>
+<rect x="530.7" y="124.1" width="16.3" height="175.9" fill="#2f7d6d" opacity="0.8"/>
+<rect x="548.0" y="97.9" width="16.3" height="202.1" fill="#2f7d6d" opacity="0.8"/>
+<rect x="565.3" y="73.4" width="16.3" height="226.6" fill="#2f7d6d" opacity="0.8"/>
+<rect x="582.7" y="53.8" width="16.3" height="246.2" fill="#2f7d6d" opacity="0.8"/>
+<text x="340" y="32">validation after scaling: ECE 0.042</text>
+<text x="340" y="316">confidence →  (bars: accuracy)</text>
+<rect x="640" y="40" width="260" height="260" fill="none" stroke="#888"/>
+<line x1="640" y1="300" x2="900" y2="40" stroke="#bbb" stroke-dasharray="4"/>
+<rect x="674.7" y="170.0" width="16.3" height="130.0" fill="#2f7d6d" opacity="0.8"/>
+<rect x="692.0" y="210.6" width="16.3" height="89.4" fill="#2f7d6d" opacity="0.8"/>
+<rect x="709.3" y="230.1" width="16.3" height="69.9" fill="#2f7d6d" opacity="0.8"/>
+<rect x="726.7" y="211.9" width="16.3" height="88.1" fill="#2f7d6d" opacity="0.8"/>
+<rect x="744.0" y="199.6" width="16.3" height="100.4" fill="#2f7d6d" opacity="0.8"/>
+<rect x="761.3" y="192.0" width="16.3" height="108.0" fill="#2f7d6d" opacity="0.8"/>
+<rect x="778.7" y="179.4" width="16.3" height="120.6" fill="#2f7d6d" opacity="0.8"/>
+<rect x="796.0" y="175.8" width="16.3" height="124.2" fill="#2f7d6d" opacity="0.8"/>
+<rect x="813.3" y="156.1" width="16.3" height="143.9" fill="#2f7d6d" opacity="0.8"/>
+<rect x="830.7" y="135.5" width="16.3" height="164.5" fill="#2f7d6d" opacity="0.8"/>
+<rect x="848.0" y="121.1" width="16.3" height="178.9" fill="#2f7d6d" opacity="0.8"/>
+<rect x="865.3" y="102.3" width="16.3" height="197.7" fill="#2f7d6d" opacity="0.8"/>
+<rect x="882.7" y="65.0" width="16.3" height="235.0" fill="#2f7d6d" opacity="0.8"/>
+<text x="640" y="32">test before scaling: ECE 0.106</text>
+<text x="640" y="316">confidence →  (bars: accuracy)</text>
+<rect x="940" y="40" width="260" height="260" fill="none" stroke="#888"/>
+<line x1="940" y1="300" x2="1200" y2="40" stroke="#bbb" stroke-dasharray="4"/>
+<rect x="974.7" y="213.3" width="16.3" height="86.7" fill="#2f7d6d" opacity="0.8"/>
+<rect x="992.0" y="221.5" width="16.3" height="78.5" fill="#2f7d6d" opacity="0.8"/>
+<rect x="1009.3" y="218.9" width="16.3" height="81.1" fill="#2f7d6d" opacity="0.8"/>
+<rect x="1026.7" y="203.5" width="16.3" height="96.5" fill="#2f7d6d" opacity="0.8"/>
+<rect x="1044.0" y="196.1" width="16.3" height="103.9" fill="#2f7d6d" opacity="0.8"/>
+<rect x="1061.3" y="181.6" width="16.3" height="118.4" fill="#2f7d6d" opacity="0.8"/>
+<rect x="1078.7" y="171.3" width="16.3" height="128.7" fill="#2f7d6d" opacity="0.8"/>
+<rect x="1096.0" y="150.1" width="16.3" height="149.9" fill="#2f7d6d" opacity="0.8"/>
+<rect x="1113.3" y="130.2" width="16.3" height="169.8" fill="#2f7d6d" opacity="0.8"/>
+<rect x="1130.7" y="119.4" width="16.3" height="180.6" fill="#2f7d6d" opacity="0.8"/>
+<rect x="1148.0" y="99.1" width="16.3" height="200.9" fill="#2f7d6d" opacity="0.8"/>
+<rect x="1165.3" y="73.7" width="16.3" height="226.3" fill="#2f7d6d" opacity="0.8"/>
+<rect x="1182.7" y="51.0" width="16.3" height="249.0" fill="#2f7d6d" opacity="0.8"/>
+<text x="940" y="32">test after scaling: ECE 0.043</text>
+<text x="940" y="316">confidence →  (bars: accuracy)</text>
+</svg>

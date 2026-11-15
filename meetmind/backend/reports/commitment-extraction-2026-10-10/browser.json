@@ -1,0 +1,16 @@
+[
+  {
+    "name": "Promise and deadline",
+    "result": "pass",
+    "actions": 1,
+    "candidates": 0,
+    "elapsed_ms": 15851
+  },
+  {
+    "name": "Cancellation and suggestions",
+    "result": "pass",
+    "actions": 1,
+    "candidates": 2,
+    "elapsed_ms": 17410
+  }
+]

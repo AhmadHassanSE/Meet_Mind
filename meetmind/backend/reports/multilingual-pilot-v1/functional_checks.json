@@ -1,0 +1,55 @@
+{
+  "accuracy_benchmark": false,
+  "native_urdu_bert_trained": false,
+  "backend_tests_passed": 103,
+  "frontend_build_passed": true,
+  "browser_check_api_mocked": true,
+  "real_urdu_audio_tested": false,
+  "fixtures": {
+    "English": {
+      "status_code": 200,
+      "actions": 1,
+      "candidates": 0,
+      "review_persistence": true,
+      "exact_source_evidence_checked": true,
+      "translation_method": "english_direct",
+      "model": "llama3.2:latest"
+    },
+    "Roman Urdu": {
+      "status_code": 200,
+      "actions": 1,
+      "candidates": 0,
+      "review_persistence": true,
+      "exact_source_evidence_checked": true,
+      "translation_method": "ollama_translation_then_english_bert",
+      "model": "qwen3:4b"
+    },
+    "Urdu": {
+      "status_code": 200,
+      "actions": 1,
+      "candidates": 0,
+      "review_persistence": true,
+      "exact_source_evidence_checked": true,
+      "translation_method": "ollama_translation_then_english_bert",
+      "model": "qwen3:4b"
+    },
+    "Mixed": {
+      "status_code": 200,
+      "actions": 1,
+      "candidates": 0,
+      "review_persistence": true,
+      "exact_source_evidence_checked": true,
+      "translation_method": "ollama_translation_then_english_bert",
+      "model": "qwen3:4b"
+    },
+    "User-provided Urdu": {
+      "status_code": 200,
+      "actions": 2,
+      "candidates": 0,
+      "review_persistence": true,
+      "exact_source_evidence_checked": true,
+      "translation_method": "ollama_translation_then_english_bert",
+      "model": "qwen3:4b"
+    }
+  }
+}

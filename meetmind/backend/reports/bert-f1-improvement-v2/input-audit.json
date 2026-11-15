@@ -1,0 +1,179 @@
+{
+  "scope": "Diagnosis of existing validation results, not a new trained-model score",
+  "dataset_manifest_sha256": "f6cf4e2856ec3fd3fd29cd86b6678f60ce727cde9b4d067caa52f22e8844e9d1",
+  "baseline_macro_f1": 0.5292777157237077,
+  "baseline_weighted_f1": 0.6321865642557235,
+  "target_macro_f1": 0.73,
+  "test_loaded": false,
+  "classes_by_f1": [
+    {
+      "label": "be.neg",
+      "support": 3,
+      "f1": 0.18181818181818182
+    },
+    {
+      "label": "und",
+      "support": 140,
+      "f1": 0.2538593481989708
+    },
+    {
+      "label": "el.sug",
+      "support": 95,
+      "f1": 0.39819004524886875
+    },
+    {
+      "label": "oth",
+      "support": 316,
+      "f1": 0.4405797101449275
+    },
+    {
+      "label": "el.ass",
+      "support": 238,
+      "f1": 0.46774193548387094
+    },
+    {
+      "label": "off",
+      "support": 184,
+      "f1": 0.5529715762273901
+    },
+    {
+      "label": "ass",
+      "support": 3242,
+      "f1": 0.5536488779935885
+    },
+    {
+      "label": "stl",
+      "support": 730,
+      "f1": 0.5572139303482587
+    },
+    {
+      "label": "el.und",
+      "support": 7,
+      "f1": 0.5714285714285714
+    },
+    {
+      "label": "sug",
+      "support": 1141,
+      "f1": 0.5726172465960666
+    },
+    {
+      "label": "el.inf",
+      "support": 568,
+      "f1": 0.6222627737226277
+    },
+    {
+      "label": "be.pos",
+      "support": 284,
+      "f1": 0.622673434856176
+    },
+    {
+      "label": "fra",
+      "support": 995,
+      "f1": 0.6938202247191011
+    },
+    {
+      "label": "inf",
+      "support": 3875,
+      "f1": 0.7205069435081569
+    },
+    {
+      "label": "bck",
+      "support": 1775,
+      "f1": 0.7298329355608592
+    }
+  ],
+  "largest_confusions": [
+    {
+      "gold": "ass",
+      "predicted": "bck",
+      "count": 637
+    },
+    {
+      "gold": "ass",
+      "predicted": "inf",
+      "count": 478
+    },
+    {
+      "gold": "inf",
+      "predicted": "sug",
+      "count": 473
+    },
+    {
+      "gold": "inf",
+      "predicted": "ass",
+      "count": 309
+    },
+    {
+      "gold": "stl",
+      "predicted": "fra",
+      "count": 201
+    },
+    {
+      "gold": "sug",
+      "predicted": "inf",
+      "count": 182
+    },
+    {
+      "gold": "ass",
+      "predicted": "und",
+      "count": 180
+    },
+    {
+      "gold": "ass",
+      "predicted": "sug",
+      "count": 147
+    },
+    {
+      "gold": "ass",
+      "predicted": "stl",
+      "count": 107
+    },
+    {
+      "gold": "fra",
+      "predicted": "stl",
+      "count": 104
+    },
+    {
+      "gold": "bck",
+      "predicted": "ass",
+      "count": 82
+    },
+    {
+      "gold": "ass",
+      "predicted": "be.pos",
+      "count": 75
+    }
+  ],
+  "input_views": [
+    {
+      "name": "current",
+      "context_turns": 2,
+      "max_length": 128,
+      "pair_truncation": "longest_first",
+      "rows": 13593,
+      "target_truncated_rows": 0,
+      "any_truncated_rows": 0,
+      "target_tokens_removed": 0
+    },
+    {
+      "name": "context4",
+      "context_turns": 4,
+      "max_length": 192,
+      "pair_truncation": "target_first",
+      "rows": 13593,
+      "target_truncated_rows": 0,
+      "any_truncated_rows": 0,
+      "target_tokens_removed": 0
+    },
+    {
+      "name": "context8",
+      "context_turns": 8,
+      "max_length": 256,
+      "pair_truncation": "target_first",
+      "rows": 13593,
+      "target_truncated_rows": 0,
+      "any_truncated_rows": 1,
+      "target_tokens_removed": 0
+    }
+  ]
+}

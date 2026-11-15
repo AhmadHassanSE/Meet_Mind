@@ -1,0 +1,36 @@
+{
+  "live_patched_meet_validated": false,
+  "regression_reproduced_in_real_chrome": true,
+  "before": {
+    "fixture_page_audio_playback": false,
+    "remote_tracks": 2,
+    "peak": 0,
+    "bytes": 2107,
+    "result": "No speech detected"
+  },
+  "after": {
+    "live_google_meet": false,
+    "real_chrome": true,
+    "real_webrtc_audio": true,
+    "real_whisper": true,
+    "segments": 2,
+    "state": "completed",
+    "capture_stats": {
+      "remote_tracks": 2,
+      "active_tracks": 0,
+      "audio_context_state": "closed",
+      "playback_errors": 0,
+      "bytes": 30921,
+      "chunks": 1,
+      "peak": 58,
+      "error": null,
+      "recording": false
+    },
+    "capture_method": "browser_bot"
+  },
+  "backend_tests_passed": 99,
+  "frontend_build_passed": true,
+  "audio_regression_passed": true,
+  "mocked_ui_warning_and_recovery_check_passed": true,
+  "note": "Real Chrome/WebRTC and real Whisper, local speech fixture. No new live Google Meet result claimed."
+}

@@ -1,0 +1,44 @@
+[
+  {
+    "name": "AMI ES2005a",
+    "segments": 148,
+    "analysis_and_refresh_ms": 8239,
+    "result": "pass"
+  },
+  {
+    "name": "AMI IS1005a",
+    "segments": 286,
+    "analysis_and_refresh_ms": 1400,
+    "result": "pass"
+  },
+  {
+    "name": "AMI IS1007a",
+    "segments": 367,
+    "analysis_and_refresh_ms": 1650,
+    "result": "pass"
+  },
+  {
+    "name": "AMI TS3006a",
+    "segments": 702,
+    "analysis_and_refresh_ms": 2888,
+    "result": "pass"
+  },
+  {
+    "name": "AMI TS3010a",
+    "segments": 245,
+    "analysis_and_refresh_ms": 1698,
+    "result": "pass"
+  },
+  {
+    "name": "sampleTra_report.txt",
+    "segments": 108,
+    "analysis_and_refresh_ms": 1461,
+    "result": "pass"
+  },
+  {
+    "name": "transcription.txt",
+    "segments": 232,
+    "analysis_and_refresh_ms": 1923,
+    "result": "pass"
+  }
+]
