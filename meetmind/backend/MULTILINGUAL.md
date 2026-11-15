@@ -1,7 +1,7 @@
 # English, Urdu and Roman Urdu
 
-Branch: `feat/urdu-roman-urdu`, based on the latest non-Meet branch
-`feat/commitment-review` at `0ee75bf`. Google Meet remains separate.
+Developed on `feat/urdu-roman-urdu` and now part of the integrated `main`,
+together with Google Meet capture (Meet sessions pass the selected language through).
 
 ## Supported inputs
 
@@ -48,8 +48,7 @@ Qwen3 thinking is disabled for bounded structured outputs. A missing model
 causes an explicit error, not an English-only fallback. `/api/health` reports
 the multilingual model name/status separately from the English extractor.
 CPU inference on longer transcripts can take several minutes. `OLLAMA_TIMEOUT_SECONDS` configures extraction request timeout (default 600 seconds). Model inference remains local to Ollama; no hosted AI key/provider is added.
-Downloads need internet. Existing Google Meet servers do not automatically pick
-up this feature branch or its new configuration.
+Downloads need internet.
 
 ### Audio and recordings
 
@@ -61,7 +60,7 @@ Urdu script; the Roman Urdu option does not promise Romanized ASR output.
 
 Whisper language detection on short audio and English/Urdu code switching can
 fail; select English/Urdu explicitly when known and review the transcript.
-`base` is a small CPU model; Urdu recording accuracy has not been established.
+The default `small` model is a CPU-friendly multilingual model; Urdu recording accuracy has not been established.
 `WHISPER_MODEL` can select another multilingual Whisper model if resources allow.
 An English-only `.en` model explicitly rejects Urdu/auto audio instead of
 silently treating it as English. It can still be used with `input_language=en`.

@@ -1,30 +1,29 @@
-# Iteration 2 checkpoint: follow-up drafting and approval
+# Follow-up drafts, approval and execution
 
-Branch: `feat/iteration2-agent-framework`. The new isolated checkout is
-`D:\FYP_MeetMind\Meet_Mind_iteration2`. It merges the latest multilingual speech
-update, the BERT experiment tooling, commitment review, the participant extension
-and the browser bot. It does not replace the existing BERT weights or claim a
-new F1 score. Original feature branches remain available.
+The workflow below runs inside the meeting workflow ([WORKFLOW.md](WORKFLOW.md)) or
+by hand from **Follow-up drafts**.
 
 ## Implemented workflow
 
-1. In a saved meeting, review and approve an extracted commitment.
-2. Choose **Draft follow-up**. Enter actual recipient addresses explicitly.
-3. A LangGraph workflow calls local Ollama to draft a subject/body and validates
-   the structured response. The model cannot choose recipients or send messages.
-4. Inspect the email and its source evidence in **Follow-up drafts**. Edit and
-   save recipients, subject or body as needed.
-5. Explicitly approve or reject the exact saved draft. Changes to any draft
-   field invalidate approval. Re-reviewing the source commitment invalidates all
-   its drafts, including approval, in the same database transaction.
-6. Reopen drafts to inspect their saved state and history.
+1. In a saved meeting, the organizer reviews and approves an extracted commitment
+   and links its owner account.
+2. Create a follow-up. An **email** needs recipient addresses entered or confirmed
+   by a person. A **Jira ticket** is assigned to the linked owner's Jira account
+   ([JIRA.md](JIRA.md)).
+3. A LangGraph graph calls local Ollama to draft the subject/body (or summary and
+   description) and validates the structured response. The model cannot choose
+   recipients or assignees, approve, or send.
+4. Inspect the draft and its source evidence. Edit and save as needed.
+5. The item owner (or the organizer when no owner is linked, or as the policy
+   says) explicitly approves or rejects the exact saved draft. Any change to the
+   draft, its source commitment or owner, or the policy invalidates approval.
+6. An approved draft is executed **at most once**: an email from the approver's
+   Gmail ([GMAIL.md](GMAIL.md)) or a Jira issue. Delivery state and every decision
+   are kept in the draft history and the audit log.
 
 Approval of a commitment and approval of its follow-up are separate decisions.
-**No email is sent at this checkpoint.** There is no delivery endpoint, Gmail
-OAuth, Jira/Slack connector or execution worker yet. The next vertical slice is
-authenticated Gmail connection and an explicitly authorized, idempotent send.
-Accounts/RBAC, normalized PostgreSQL storage and full agent orchestration are
-also remaining Iteration 2 work.
+Normalized PostgreSQL storage, Slack, Calendar and automatic escalation remain
+later work.
 
 ## Run in the integrated checkout
 
@@ -121,7 +120,9 @@ tone and intended recipients; schema validation is not semantic accuracy.
 
 ## Verification
 
-179 combined backend tests passed locally. The new tests cover source eligibility,
+The current backend suite count is recorded per checkpoint in `docs/development-evidence.md`
+(320 on 14 Nov 2026). Draft-related tests (`test_artifacts.py`, `test_policy.py`,
+`test_gmail.py`, `test_jira.py`, `test_workflow.py`) cover source eligibility,
 real LangGraph nodes with mocked Ollama responses, idempotency, stale edits,
 approval invalidation, concurrent source change, policy updates, invalid recipients,
 restart recovery and Urdu capture metadata. Browser checks cover the built UI

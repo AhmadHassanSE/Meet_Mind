@@ -19,7 +19,7 @@ The meeting page exposes the original transcript and expandable source turns. JS
 
 ## Verification on 10 October 2026
 
-38 backend tests passed and the frontend production build passed. Five complete AMI validation meetings and two local report files passed actual upload/classify/persistence/export/source-coverage checks. Browser checks passed for all seven, including original text, source turns, reload persistence and 390px layout.
+At the time of this change (10 Oct 2026) 38 backend tests passed and the frontend production build passed; current suite counts are recorded in `docs/development-evidence.md`. Five complete AMI validation meetings and two local report files passed actual upload/classify/persistence/export/source-coverage checks. Browser checks passed for all seven, including original text, source turns, reload persistence and 390px layout.
 
 | Input | Source turns | Prepared utterances | BERT input truncated |
 |---|---:|---:|---:|

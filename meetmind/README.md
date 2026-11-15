@@ -1,10 +1,20 @@
-# MeetMind — Iteration 1
+# MeetMind: Iterations 1 and 2
 
 Fresh implementation. The sibling `meeting-transcription-agent` directory is reference only.
 
-## Iteration 2: integrated follow-up drafts
+## Iteration 2: workflow, approvals and execution
 
-The integrated branch combines multilingual ingestion, commitment review, the Meet extension/browser bot, and BERT experiment tooling. [Follow-up drafting and separate approval](backend/ARTIFACTS.md) now use local Ollama and LangGraph. Drafts are persisted and editable; this checkpoint does not send email. Follow that guide for the integrated checkout and existing-model/profile configuration.
+`main` combines:
+- multilingual ingestion and commitment review;
+- the Meet extension and browser bot;
+- BERT experiment tooling;
+- accounts and roles;
+- the LangGraph meeting workflow;
+- the policy rules engine;
+- follow-up drafting with separate owner approval;
+- execution through Gmail and Jira.
+
+An approved draft is sent or created at most once, and only while its approval is valid. Guides: [workflow](backend/WORKFLOW.md), [drafts and policy](backend/ARTIFACTS.md), [accounts and roles](backend/AUTH.md), [Gmail](backend/GMAIL.md), [Jira](backend/JIRA.md). Live Gmail and Jira checks need the team's own OAuth client and Jira site.
 
 ## Accounts and roles
 
@@ -117,9 +127,9 @@ Jobs are queued (one worker, three total admitted jobs), decoded, transcribed an
 
 All paths produce the same transcript segment fields: `id`, `speaker`, `text`, `source`, `start`, `end`, plus source lineage. New meetings preserve the original transcript and prepare sentence-sized utterances before analysis. See [transcript preparation](backend/PREPROCESSING.md) for report cleaning, token budgets, offsets and evidence. Meeting metadata includes source type, original filename and transcription model/duration where applicable. TXT/JSON/original-text exports are available for every meeting; VTT export requires positive timestamp ranges on all segments.
 
-SQLite persistence, meeting library/detail, health status and structured local extraction remain available. Extraction now combines BERT signals, spaCy owner/deadline evidence and Ollama proposals, with quoted sources and conservative cancellation checks. Suggestions, requests and cancellations are displayed separately. See [structured commitments](backend/COMMITMENTS.md) for setup, fields, tests and limitations. Results require review; source validation does not guarantee semantic correctness. Successful re-extraction replaces previous results. Owner/deadline editing, approval/rejection, calibrated confidence and commitment-specific annotation/evaluation remain pending. Separate AMI dialogue-act training and evaluation are documented in BERT.md. No external actions execute.
+SQLite persistence, meeting library/detail, health status and structured local extraction remain available. Extraction now combines BERT signals, spaCy owner/deadline evidence and Ollama proposals, with quoted sources and conservative cancellation checks. Suggestions, requests and cancellations are displayed separately. See [structured commitments](backend/COMMITMENTS.md) for setup, fields, tests and limitations. Results require review; source validation does not guarantee semantic correctness. Re-extraction is blocked once items are reviewed, so decisions are never overwritten. Deadlines are resolved to dates and priorities are detected (see COMMITMENTS.md). The team-annotation and end-to-end extraction tooling is in `backend/evaluation/`; the team's own labelled results are still to be added. AMI dialogue-act training and the held-out test evaluation are documented in BERT.md and `reports/bert-base-test-v1`. Nothing external happens without an approved draft.
 
-Fine-tuned BERT is the primary dialogue-act classifier following the user's confirmed decision. Ollama remains the optional local commitment extractor and does not replace BERT. SQLite is a temporary local foundation; PostgreSQL remains the proposed relational target. No authentication or production deployment is included.
+Fine-tuned BERT is the primary dialogue-act classifier. Ollama is the local commitment extractor and drafter; it does not replace BERT. SQLite is a local single-installation foundation; PostgreSQL remains the proposed relational target. Accounts, roles and an audit trail are included (AUTH.md). Production deployment is not: keep the backend bound to 127.0.0.1.
 
 ## Checks
 ```powershell
