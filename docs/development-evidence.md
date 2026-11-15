@@ -205,3 +205,7 @@ AI-assisted (Claude Code) on `docs/mid1-refresh`.
 - Stale statements corrected in the READMEs, ARTIFACTS.md, MULTILINGUAL.md and PREPROCESSING.md.
 
 Verified: 325 backend tests passed locally. GitHub Actions did not run on the 14 Nov pushes: the account is locked for billing ("The job was not started because your account is locked due to a billing issue"), so no CI result exists for those commits.
+
+## 15 November 2026 - BERT confidence calibration
+
+Temperature scaling fitted on validation only (T = 1.2281) for the selected BERT-base weights `5a70014d...`. Held-out test expected calibration error 0.1063 -> 0.0433 (validation 0.1036 -> 0.0419); accuracy unchanged (0.6632 test) and identical to the one-time test evaluation, confirming identical inputs. Test was used only to report calibration, not to fit it. The app applies the calibration only when its weights hash matches and now reports `confidence_calibrated: true`; verified with a local inference call. Details and reliability diagram: `meetmind/backend/reports/bert-base-calibration-v1`.
