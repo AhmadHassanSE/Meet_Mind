@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ArrowRight, Upload, FileText, Mic, Video, X, CheckCircle2 } from 'lucide-react';
 import { apiFetch } from './api';
 
@@ -102,9 +102,13 @@ export function UploadMeeting({ onReady }: { onReady: (id: string) => Promise<vo
     finally { setBusy(false); submitting.current = false; }
   }
 
-  return <><h1>Upload a meeting</h1><p className="muted">Paste a transcript, upload audio, or turn a meeting recording into searchable text.</p>
+  const tabIndex = tabs.findIndex(t => t.id === tab);
+  return <><div className="page-head"><div><h1>Upload a meeting</h1><p className="muted">Paste a transcript, upload audio, or turn a meeting recording into searchable text.</p></div>
+    <ol className="mini-steps" aria-label="What happens next"><li className="on">Upload</li><li>Transcript</li><li>Extract</li><li>Review</li></ol></div>
     <form className="panel form ingestion-form" onSubmit={e => { e.preventDefault(); void submit(); }}>
-      <div className="upload-tabs" role="tablist" aria-label="Meeting input type">{tabs.map(t => <button type="button" role="tab" aria-selected={tab === t.id} disabled={running} key={t.id} className={tab === t.id ? 'primary' : 'tab-button'} onClick={() => { setTab(t.id); setFile(null); setError(''); setJob(null); }}><t.icon size={17}/>{t.label}</button>)}</div>
+      <div className="upload-tabs" role="tablist" aria-label="Meeting input type" style={{ '--tab': tabIndex, '--tabs': tabs.length } as React.CSSProperties}>
+        <span className="tab-thumb" aria-hidden="true"/>
+        {tabs.map(t => <button type="button" role="tab" aria-selected={tab === t.id} disabled={running} key={t.id} className="tab-button" onClick={() => { setTab(t.id); setFile(null); setError(''); setJob(null); }}><t.icon size={17} aria-hidden="true"/>{t.label}</button>)}</div>
       {error && <div role="alert" className="error">{error}</div>}
       <label>Meeting title<input required disabled={running} maxLength={200} value={title} onChange={e => setTitle(e.target.value)} placeholder="Weekly product review"/></label>
       <label>Meeting language<select aria-label="Meeting language" disabled={running} value={language} onChange={e => setLanguage(e.target.value)}>
@@ -113,13 +117,14 @@ export function UploadMeeting({ onReady }: { onReady: (id: string) => Promise<vo
       </select><small>English, Urdu script and Roman Urdu transcripts are accepted. Choose explicitly for short or ambiguous text. Urdu speech is written in Urdu script; Roman Urdu is a text input option.</small></label>
       {tab === 'text' ? <label>Transcript<textarea aria-label="Transcript" dir="auto" required disabled={running} maxLength={500000} value={text} onChange={e => setText(e.target.value)} placeholder={'Paste your meeting transcript here…\n\nSara: I will send the proposal by Friday.\nAhmed: Let’s review the budget next week.'}/><small>{text.length.toLocaleString()} / 500,000 characters</small></label> : <div>
         <input ref={input} key={tab} className="visually-hidden" aria-label={`Choose ${tab} file`} type="file" disabled={running} accept={formats[tab]} onChange={e => choose(e.target.files?.[0])}/>
-        <button type="button" disabled={running} className={`dropzone ${dragging ? 'dragging' : ''}`} onClick={() => input.current?.click()} onDragOver={e => { e.preventDefault(); if (!running) setDragging(true); }} onDragLeave={() => setDragging(false)} onDrop={e => { e.preventDefault(); setDragging(false); if (!running) choose(e.dataTransfer.files[0]); }}><Upload size={32}/><strong>{file ? file.name : 'Drop your file here or click to browse'}</strong><span>{formats[tab].split(',').join(' · ')} · up to {tab === 'transcript' ? '2 MB' : '200 MB / 2 hours'}</span></button>
+        <button type="button" disabled={running} className={`dropzone ${dragging ? 'dragging' : ''}`} onClick={() => input.current?.click()} onDragOver={e => { e.preventDefault(); if (!running) setDragging(true); }} onDragLeave={() => setDragging(false)} onDrop={e => { e.preventDefault(); setDragging(false); if (!running) choose(e.dataTransfer.files[0]); }}><span className="drop-icon" aria-hidden="true"><Upload size={28}/></span><strong>{file ? file.name : 'Drop your file here or click to browse'}</strong><span>{formats[tab].split(',').join(' · ')} · up to {tab === 'transcript' ? '2 MB' : '200 MB / 2 hours'}</span></button>
         {file && <div className="row file-summary"><span className="muted">{(file.size / 1024 / 1024).toFixed(2)} MB · {file.name}</span><button className="back" type="button" aria-label="Remove selected file" disabled={running} onClick={() => { setFile(null); if (input.current) input.current.value = ''; }}><X size={18}/></button></div>}
         {preview && (tab === 'audio' ? <audio controls src={preview} className="media-preview"/> : <video controls src={preview} className="media-preview"/>)}
         {tab === 'recording' && <p className="muted">Upload a saved Meet, Teams, or screen recording with audible meeting audio. Direct live connection is planned for a later iteration.</p>}
         {['audio', 'recording'].includes(tab) && <p className="muted" aria-label="Local transcription information">English and Urdu speech are transcribed locally using a multilingual speech model. Speaker identification is not available for recordings yet.</p>}
       </div>}
-      {(running || job) && <section className="progress-panel" aria-live="polite"><div className="row"><strong>{job?.message || 'Uploading and validating your meeting…'}</strong>{job && <span className="mint">{job.progress}%</span>}</div><progress aria-label="Ingestion progress" max={100} value={job ? job.progress : undefined}/><div className="stage-list">{['queued', 'decoding', 'loading_model', 'transcribing', 'saving', 'completed'].map(stage => <span key={stage} className={job?.status === stage ? 'mint' : 'muted'}>{stage.replace('_', ' ')}</span>)}</div></section>}
+      {(running || job) && <section className="progress-panel" aria-live="polite"><div className="row"><strong>{job?.message || 'Uploading and validating your meeting…'}</strong>{job && <span className="mint">{job.progress}%</span>}</div><progress aria-label="Ingestion progress" max={100} value={job ? job.progress : undefined}/><ol className="stage-list">{(() => { const order = ['queued', 'decoding', 'loading_model', 'transcribing', 'saving', 'completed']; const at = order.indexOf(job?.status || 'queued');
+        return order.map((stage, i) => <li key={stage} className={i < at ? 'done' : i === at ? 'mint current' : 'muted'}>{stage.replace('_', ' ')}</li>); })()}</ol></section>}
       <div className="row"><span className="muted"><CheckCircle2 size={14}/> Your transcript stays in this local workspace.</span><button className="primary" disabled={running || !title.trim() || (tab === 'text' ? !text.trim() : !file)}>{running ? 'Processing…' : 'Process meeting'}<ArrowRight size={17}/></button></div>
     </form></>;
 }

@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { ArrowRight, Mail, Ticket } from 'lucide-react';
 import type { Commitment } from './CommitmentResults';
 import { api } from './api';
 
@@ -16,6 +17,14 @@ type Draft = { id: string; meeting_id: string; meeting_title: string; status: st
 export type DraftSource = { meeting_id: string; commitment: Commitment };
 const labels: Record<string,string> = {drafting:'Generating', draft:'Needs approval', approved:'Approved',
   rejected:'Rejected', source_changed:'Source changed', failed:'Generation failed'};
+
+/** Colour family for a draft's state: waiting, approved/sent, failed/rejected, or neutral. */
+function tone(d: Pick<Draft,'status'|'approval_valid'|'delivery'>) {
+  if (d.delivery?.status==='failed' || d.status==='failed' || d.status==='rejected' || d.status==='source_changed') return 'bad';
+  if (d.delivery?.status==='sent' || (d.status==='approved' && d.approval_valid)) return 'ok';
+  if (d.status==='draft' || d.status==='drafting' || d.status==='approved') return 'wait';
+  return 'neutral';
+}
 
 export function ArtifactWorkspace({source, onMeeting, queue=false}: {source: DraftSource | null; onMeeting:(id:string)=>void; queue?: boolean}) {
   const [drafts,setDrafts]=useState<Draft[]>([]), [draft,setDraft]=useState<Draft | null>(null);
@@ -66,7 +75,7 @@ export function ArtifactWorkspace({source, onMeeting, queue=false}: {source: Dra
   async function send() {
     if(!draft || busy)return;
     setBusy(true);setError('');
-    try {setDraft(await api<Draft>(`/artifacts//send`,'POST'));await refresh();}
+    try {setDraft(await api<Draft>(`/artifacts/${draft.id}/send`,'POST'));await refresh();}
     catch(e){setError((e as Error).message);}finally{setBusy(false);}
   }
   const dirty=Boolean(draft && (to!==draft.to.join(', ') || subject!==draft.subject || body!==draft.body));
@@ -77,14 +86,15 @@ export function ArtifactWorkspace({source, onMeeting, queue=false}: {source: Dra
   const second=Boolean(draft && partial.length && draft.policy.approvals_required>1 && draft.rights.can_organize);
   const override=Boolean(draft && !draft.rights.can_decide && !second && draft.rights.can_override);
   const decidable=open && Boolean(draft && (draft.rights.can_decide || second || override));
-  return <><h1>{queue ? 'My approvals' : 'Follow-up drafts'}</h1>
+  return <><div className="page-head"><div><h1>{queue ? 'My approvals' : 'Follow-up drafts'}</h1>
     <p className="muted">{queue ? 'Drafts for action items you own (or organize without an owner) that are waiting for your decision.'
-      : 'Create an email from an approved commitment, check its content and recipients, then the item owner approves or rejects the draft. Delivery connections are coming next.'}</p>
+      : 'Create an email or Jira ticket from an approved commitment, check its content and recipients, then the item owner approves or rejects the draft.'}</p></div>
+    <div className="gate-steps" aria-hidden="true"><span>Draft</span><ArrowRight size={14}/><span>Policy check</span><ArrowRight size={14}/><span className="on">Owner approves</span><ArrowRight size={14}/><span>Sent once</span></div></div>
     {error && <p role="alert" className="error">{error}</p>}
     {source && !queue && <form className="panel form" onSubmit={e=>{e.preventDefault();void create();}}>
       <h2>Create follow-up</h2><p dir="auto">{source.commitment.task}</p>
       <div className="review-controls" role="radiogroup" aria-label="Follow-up channel">{(['email','jira'] as const).map(value=><label className="check" key={value}><input type="radio" name="channel" checked={channel===value} onChange={()=>{setChannel(value);requestKey.current=crypto.randomUUID();}}/> {value==='email' ? 'Email' : 'Jira ticket'}</label>)}</div>
-      {channel==='jira' ? <small className="muted">The ticket is assigned to the linked owner's Jira account{source.commitment.assignee ? ` ()` : ' (no owner linked: unassigned)'}. An admin connects Jira under Admin → Jira.</small> : <>
+      {channel==='jira' ? <small className="muted">The ticket is assigned to the linked owner's Jira account{source.commitment.assignee ? ` (${source.commitment.assignee.name})` : ' (no owner linked: unassigned)'}. An admin connects Jira under Admin → Jira.</small> : <>
       <label>Recipient email addresses<input required value={recipients} onChange={e=>{setRecipients(e.target.value);requestKey.current=crypto.randomUUID();}} placeholder="person@example.com, colleague@example.com" disabled={busy}/></label>
       <small className="muted">{source.commitment.assignee ? `Suggested from the linked owner account (${source.commitment.assignee.name}). Confirm before generating.` : 'Enter recipients explicitly; an owner\'s name is not an email address.'}</small></>}
       <button className="primary" disabled={busy || (channel==='email' && !recipients.trim())}>{busy ? 'Generating locally…' : channel==='jira' ? 'Generate ticket draft' : 'Generate email draft'}</button>
@@ -92,11 +102,13 @@ export function ArtifactWorkspace({source, onMeeting, queue=false}: {source: Dra
     {!source && !draft && !queue && <p className="muted">Open a meeting, approve a commitment and choose “Draft follow-up” to create an email.</p>}
     <div className="artifact-layout"><section className="panel artifact-list"><div className="row"><h2>{queue ? 'Waiting for you' : 'Saved drafts'}</h2><button onClick={()=>void refresh().catch(e=>setError(e.message))}>Refresh</button></div>
       {!drafts.length && <p className="muted">{queue ? 'Nothing is waiting for your approval.' : 'No drafts yet.'}</p>}
-      {drafts.map(item=><button className="artifact-entry" key={item.id} onClick={()=>{setDraft(item);setError('');}}>
-        <strong>{item.subject || item.source.task}</strong><small>{item.meeting_title} · {labels[item.status] || item.status}{item.rights.can_decide && item.status==='draft' ? ' · your decision' : ''}</small>
+      {drafts.map((item,index)=><button className={`artifact-entry spot tone-${tone(item)}${draft?.id===item.id ? ' selected' : ''}`} style={{'--i':Math.min(index,10)} as React.CSSProperties} key={item.id} aria-current={draft?.id===item.id ? 'true' : undefined} onClick={()=>{setDraft(item);setError('');}}>
+        <span className="entry-icon" aria-hidden="true">{item.channel==='jira' ? <Ticket size={16}/> : <Mail size={16}/>}</span>
+        <span className="entry-text"><strong>{item.subject || item.source.task}</strong><small>{item.meeting_title} · {labels[item.status] || item.status}{item.rights.can_decide && item.status==='draft' ? ' · your decision' : ''}</small></span>
       </button>)}
     </section>
-    {draft && <section className="panel artifact-detail"><div className="row"><h2>{draft.channel==='jira' ? 'Jira ticket draft' : 'Email draft'}</h2><span className="pill">{draft.status==='approved' && !draft.approval_valid ? 'Approval outdated' : labels[draft.status] || draft.status}</span></div>
+    {!draft && <section className="panel artifact-placeholder"><span className="empty-mark" aria-hidden="true"><Mail size={26}/></span><p className="muted">{drafts.length ? 'Choose a draft on the left to read and decide on it.' : queue ? 'When an owner decision is needed, the draft appears here.' : 'Drafts you create appear here for review.'}</p></section>}
+    {draft && <section key={draft.id} className={`panel artifact-detail tone-${tone(draft)}`}><div className="row"><h2>{draft.channel==='jira' ? 'Jira ticket draft' : 'Email draft'}</h2><span className={`pill${tone(draft)==='ok' ? ' ok' : tone(draft)==='bad' ? ' bad' : tone(draft)==='wait' ? ' warning' : ' quiet'}`}>{draft.status==='approved' && !draft.approval_valid ? 'Approval outdated' : labels[draft.status] || draft.status}</span></div>
       <p className="muted">Source commitment: <span dir="auto">{draft.source.task}</span></p>
       <p className="muted">Owner: {draft.source.owner || 'Unresolved'} · Due: {draft.source.deadline || 'Unresolved'}</p>
       {draft.source.evidence.map((e,i)=><blockquote dir="auto" key={i}>{e.quote}</blockquote>)}
@@ -104,9 +116,9 @@ export function ArtifactWorkspace({source, onMeeting, queue=false}: {source: Dra
       {draft.policy.violations.map(reason=><p className="error" key={reason}>{reason}</p>)}
       {!!draft.draft_warnings?.length && <div className="draft-warnings" role="status"><strong>Check before approving:</strong><ul>{draft.draft_warnings.map(w=><li key={w}>{w}</li>)}</ul></div>}
       {draft.approval && draft.status==='approved' && <p className="muted">Approved by {draft.approval.approved_by_label}{draft.approval.admin_override ? ' (admin override)' : ''}</p>}
-      {draft.delivery && <p className={draft.delivery.status==='failed' ? 'error' : 'muted'}>Delivery: {draft.delivery.status.replace('_',' ')}{draft.delivery.detail ? ` · ` : ''}{draft.delivery.url && <> · <a href={draft.delivery.url} target="_blank" rel="noreferrer">open issue</a></>}</p>}
+      {draft.delivery && <p className={draft.delivery.status==='failed' ? 'error' : 'muted'}>Delivery: {draft.delivery.status.replace('_',' ')}{draft.delivery.detail ? ` · ${draft.delivery.detail}` : ''}{draft.delivery.url && <> · <a href={draft.delivery.url} target="_blank" rel="noreferrer">open issue</a></>}</p>}
       {draft.approval_valid && draft.delivery?.status!=='sent' && draft.delivery?.status!=='sending' && <button className="primary" disabled={busy} onClick={()=>void send()}>{draft.delivery?.status==='failed' ? 'Try again' : draft.channel==='jira' ? 'Create issue now' : 'Send now'}</button>}
-      {draft.policy.approvals_required>1 && draft.status!=='approved' && <p className="muted">Policy: a recipient is outside the organization, so two different people must approve.{partial.length ? ` Approved so far by ; waiting for a second approver.` : ''}</p>}
+      {draft.policy.approvals_required>1 && draft.status!=='approved' && <p className="muted">Policy: a recipient is outside the organization, so two different people must approve.{partial.length ? ` Approved so far by ${partial.map(p=>p.label).join(', ')}; waiting for a second approver.` : ''}</p>}
       <form className="form" onSubmit={e=>{e.preventDefault();void save();}}>
         {draft.channel==='jira' ? <p className="muted">Project {draft.jira?.project_key} · Assignee: {draft.jira?.assignee_name || (draft.jira?.assignee_account_id ? 'linked owner' : 'unassigned')}</p>
           : <label>To<input required aria-label="Draft recipients" value={to} onChange={e=>setTo(e.target.value)} disabled={!editable || busy}/></label>}

@@ -72,9 +72,10 @@ export function MeetingBot({ onReady }: { onReady: (id: string) => Promise<void>
     catch (e) { setError((e as Error).message); }
     finally { setBusy(false); }
   }
-  return <><h1>Google Meet browser bot</h1>
+  return <><div className="page-head"><div><h1>Google Meet browser bot</h1>
     <p className="muted">Send a separate browser participant into your meeting. The host admits the bot; after recording, MeetMind transcribes locally.</p>
-    <p className="muted">The Chrome extension is still available for recording from your own meeting tab. This bot uses a separate browser window and captures incoming meeting audio with its microphone and camera disabled.</p>
+    <p className="muted">The Chrome extension is still available for recording from your own meeting tab. This bot uses a separate browser window and captures incoming meeting audio with its microphone and camera disabled.</p></div>
+    <span className={`bot-orb${active ? ' live' : ''}`} aria-hidden="true"><Video size={26}/></span></div>
     {error && <p role="alert" className="error">{error}</p>}
     {capabilities && (!capabilities.playwright_installed || !capabilities.ffmpeg_available) && <p className="error">Bot setup is incomplete. Install the backend bot extra, Google Chrome and FFmpeg before starting.</p>}
     <form className="panel form" onSubmit={e => { e.preventDefault(); void start(); }}>

@@ -27,8 +27,9 @@ export function Account({ me, onChanged }: { me: Me; onChanged: () => Promise<vo
     try { await action(); setMessage(done); } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   }
   const request = me.organizer_request;
-  return <><h1>{me.name}</h1>
-    <p className="muted">{me.email} · {me.role === 'organizer' ? 'Organizer' : 'Member'}{me.is_admin ? ' · Admin' : ''}</p>
+  return <><div className="page-head profile-head"><span className="avatar large" aria-hidden="true">{me.name.slice(0, 1).toUpperCase()}</span><div><h1>{me.name}</h1>
+    <p className="muted">{me.email}</p>
+    <p className="role-line"><span className="pill">{me.role === 'organizer' ? 'Organizer' : 'Member'}</span>{me.is_admin && <span className="pill ok">Admin</span>}</p></div></div>
     {error && <p role="alert" className="error">{error}</p>}{message && <p role="status" className="mint">{message}</p>}
     <div className="account-grid">
       <form className="panel form" onSubmit={e => { e.preventDefault(); void run(async () => { await api('/auth/me', 'PATCH', { name }); await onChanged(); }, 'Name updated.'); }}>

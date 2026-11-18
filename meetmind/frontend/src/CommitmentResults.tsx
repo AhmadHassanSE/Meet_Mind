@@ -50,7 +50,7 @@ function Result({ item, meeting, onReview, onDraft, disabled, access, directory 
     finally { setSaving(false); }
   }
   return <article className="commitment-result" data-id={item.id} data-status={item.status || 'proposed'}>
-    <span className={`pill${reviewed ? '' : ' warning'}`}>{reviewed ? item.review_status : cancellation ? 'Possible cancellation' : item.kind && item.kind !== 'commitment' ? item.kind : 'Needs review'}</span>
+    <span className={`pill${!reviewed ? ' warning' : item.review_status === 'approved' ? ' ok' : item.review_status === 'rejected' ? ' bad' : ''}`}>{reviewed ? item.review_status : cancellation ? 'Possible cancellation' : item.kind && item.kind !== 'commitment' ? item.kind : 'Needs review'}</span>
     <h3 dir="auto">{item.task}</h3><p className="muted">Owner: {item.owner || 'Unresolved'} · Due: {item.deadline || 'Unresolved'}{item.deadline_normalized ? ` (${new Date(item.deadline_normalized + 'T00:00').toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })})` : item.deadline ? ' (date not resolved)' : ''}</p>
     {(item.priority || item.confidence) && <p className="muted">{item.priority && <span className={`pill${item.priority === 'high' ? ' warning' : ''}`}>Priority: {item.priority}</span>}{item.priority_cue && <small> “{item.priority_cue}”</small>}{item.confidence && <small> · Review score {item.confidence.score.toFixed(2)}{item.confidence.action_probability != null ? ` (BERT action probability ${item.confidence.action_probability.toFixed(2)})` : ''}</small>}</p>}
     <p className="muted">Owner account: {item.assignee ? `${item.assignee.name} <${item.assignee.email}>` : 'Not linked'}{owned ? ' · assigned to you' : ''}</p>
@@ -89,7 +89,9 @@ function Result({ item, meeting, onReview, onDraft, disabled, access, directory 
 
 export function CommitmentResults({ meeting, onReview, onDraft, disabled = false, ...rights }: { meeting: CommitmentMeeting; onReview: ReviewHandler; onDraft?: (item:Commitment)=>void; disabled?: boolean } & Rights) {
   const count = [...meeting.actions, ...(meeting.action_candidates || [])].filter(item => item.review_status === 'approved').length;
-  return <section className="panel commitment-results"><h2>Extracted commitments</h2>
+  const total = meeting.actions.length + (meeting.action_candidates?.length || 0);
+  return <section className="panel commitment-results"><div className="panel-head"><h2>Extracted commitments</h2>
+    {total > 0 && <span className="meter" aria-hidden="true"><span style={{ transform: `scaleX(${count / total})` }}/></span>}</div>
     <p className="muted">{count} approved. Review evidence, correct the fields, then approve or reject each item. Blank owners and deadlines stay unresolved.</p>
     {[...meeting.actions, ...(meeting.action_candidates || [])].some(item => item.review_history?.length) && <p className="muted">Your review decisions are saved. To extract again, upload a new copy of this meeting; this keeps your reviewed work intact.</p>}
     {meeting.status === 'uploaded' ? <div className="empty">Run extraction to identify commitments.</div>

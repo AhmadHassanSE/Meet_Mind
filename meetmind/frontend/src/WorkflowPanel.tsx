@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { GitBranch } from 'lucide-react';
 import { api } from './api';
 import type { Commitment } from './CommitmentResults';
 
@@ -45,10 +46,14 @@ export function WorkflowPanel({ meetingId, actions, onChanged, navigate }: { mee
   const followUps = [...selected.map(item => ({ commitment_id: item.id, channel: 'email', to: (recipients[item.id!] || '').split(',').map(v => v.trim()).filter(Boolean) })),
     ...tickets.map(item => ({ commitment_id: item.id, channel: 'jira' }))];
   const reviewWait = flow.waiting_for?.waiting_for === 'commitment_review';
-  return <section className="panel workflow">
-    <div className="row"><h2>Workflow{flow.run ? ` · run ${flow.run}` : ''}</h2><span className={`pill${flow.status === 'failed' ? ' warning' : ''}`}>{flow.status.replace('_', ' ')}</span></div>
-    {flow.status !== 'not_started' && <ol className="stages" aria-label="Workflow stages">{flow.stages.map((stage, index) =>
-      <li key={stage} className={index < position || flow.status === 'completed' ? 'done' : index === position ? 'current' : ''}>{stageLabel[stage]}</li>)}</ol>}
+  const progress = flow.status === 'completed' ? 1 : Math.max(0, position) / Math.max(1, flow.stages.length - 1);
+  const tone = flow.status === 'failed' ? ' warning' : flow.status === 'completed' ? ' ok' : flow.status === 'not_started' ? ' quiet' : '';
+  return <section className={`panel workflow status-${flow.status}${live || reviewWait ? ' beam' : ''}`}>
+    <div className="row"><div className="workflow-title"><span className="workflow-icon" aria-hidden="true"><GitBranch size={18}/></span>
+      <div><h2>Workflow{flow.run ? ` · run ${flow.run}` : ''}</h2><p className="muted">One LangGraph run per meeting, with saved checkpoints</p></div></div>
+      <span className={`pill${tone}`}>{flow.status.replace('_', ' ')}</span></div>
+    {flow.status !== 'not_started' && <div className="stages-scroll"><ol className="stages" aria-label="Workflow stages" style={{ '--p': progress } as React.CSSProperties}>{flow.stages.map((stage, index) =>
+      <li key={stage} className={index < position || flow.status === 'completed' ? 'done' : index === position ? 'current' : ''}>{stageLabel[stage]}</li>)}</ol></div>}
     {error && <p role="alert" className="error">{error}</p>}
     {flow.status === 'not_started' && <><p className="muted">Runs extraction, then pauses for your commitment review. After you choose follow-ups and recipients it drafts them, checks policy and waits for each owner's approval. Nothing is sent without that approval.</p>
       {flow.can_control && <button className="primary" disabled={busy} onClick={() => void act('')}>Start workflow</button>}</>}
@@ -59,8 +64,8 @@ export function WorkflowPanel({ meetingId, actions, onChanged, navigate }: { mee
       {!approved.length && <p className="muted">No approved commitments yet.</p>}
       {approved.map(item => <div className="follow-up" key={item.id}>
         <span dir="auto">{item.task}</span>
-        <div className="review-controls"><label className="check"><input type="checkbox" aria-label={`Email for `} checked={Boolean(chosen[item.id! + ':email'])} onChange={e => setChosen({ ...chosen, [item.id! + ':email']: e.target.checked })}/> Email</label>
-          <label className="check"><input type="checkbox" aria-label={`Jira ticket for `} checked={Boolean(chosen[item.id! + ':jira'])} onChange={e => setChosen({ ...chosen, [item.id! + ':jira']: e.target.checked })}/> Jira ticket{item.assignee ? `, assigned to ` : ', unassigned'}</label></div>
+        <div className="review-controls"><label className="check"><input type="checkbox" aria-label={`Email for ${item.task}`} checked={Boolean(chosen[item.id! + ':email'])} onChange={e => setChosen({ ...chosen, [item.id! + ':email']: e.target.checked })}/> Email</label>
+          <label className="check"><input type="checkbox" aria-label={`Jira ticket for ${item.task}`} checked={Boolean(chosen[item.id! + ':jira'])} onChange={e => setChosen({ ...chosen, [item.id! + ':jira']: e.target.checked })}/> Jira ticket{item.assignee ? `, assigned to ${item.assignee.name}` : ', unassigned'}</label></div>
         {chosen[item.id! + ':email'] && <input aria-label={`Recipients for ${item.task}`} placeholder="person@example.com, colleague@example.com" value={recipients[item.id!] || ''} onChange={e => setRecipients({ ...recipients, [item.id!]: e.target.value })}/>}
       </div>)}
       <div className="review-controls">

@@ -25,8 +25,9 @@ export function Admin({ me }: { me: Me }) {
     try { await action(); await load(); setMessage(done); } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   }
   const update = (user: UserRow, change: Partial<UserRow>, done: string) => run(() => api(`/admin/users/${user.id}`, 'PATCH', change), done);
-  return <><h1>Workspace administration</h1>
-    <p className="muted">Admins oversee the workspace. Business approvals belong to item owners and organizers; an admin override must be justified and is audited.</p>
+  return <><div className="page-head"><div><h1>Workspace administration</h1>
+    <p className="muted">Admins oversee the workspace. Business approvals belong to item owners and organizers; an admin override must be justified and is audited.</p></div>
+    <div className="admin-figures"><span><strong>{users.length}</strong> accounts</span><span><strong>{requests.length}</strong> open requests</span><span><strong>{jira?.connected ? 'Connected' : 'Not connected'}</strong> Jira</span></div></div>
     {error && <p role="alert" className="error">{error}</p>}{message && <p role="status" className="mint">{message}</p>}
     <div className="tabs" role="tablist">{([['requests', `Organizer requests (${requests.length})`], ['users', 'Users'], ['audit', 'Audit log'], ['jira', 'Jira'], ['settings', 'Settings']] as const).map(([id, label]) =>
       <button key={id} role="tab" aria-selected={tab === id} className={tab === id ? 'active' : ''} onClick={() => setTab(id)}>{label}</button>)}</div>
