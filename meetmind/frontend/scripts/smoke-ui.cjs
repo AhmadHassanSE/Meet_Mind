@@ -9,30 +9,31 @@ const { signIn } = require('./smoke-session.cjs');
     const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
-    await signIn(page, process.env.MEETMIND_UI_URL || 'http://127.0.0.1:5173');
-    await page.getByRole('link', { name: 'Upload transcript' }).click();
+    await signIn(page, process.env.MEETMIND_UI_URL || 'http://127.0.0.1:5173', { details: true });
+    await page.getByRole('link', { name: 'Add meeting' }).click();
     await page.getByRole('tab', { name: 'Transcript file' }).click();
     const title = `UI fixture ${Date.now()}`;
     await page.getByLabel('Meeting title').fill(title);
     await page.getByLabel('Choose transcript file').setInputFiles({ name: 'meeting.vtt', mimeType: 'text/vtt', buffer: Buffer.from('WEBVTT\n\n00:01.000 --> 00:03.000\n<v Sara>I will send the report by Friday.</v>\n') });
     await page.getByRole('button', { name: 'Process meeting' }).click();
-    await page.getByRole('heading', { name: 'Transcript evidence' }).waitFor();
+    await page.getByRole('tab', { name: 'Transcript', exact: true }).click();
     await page.getByText('#1 · Sara · 1.0s – 3.0s', { exact: true }).waitFor();
     await page.getByRole('link', { name: 'VTT', exact: true }).waitFor();
     await page.reload();
     // Meetings have their own URL now; reload stays on the meeting, then return to the library.
-    await page.getByRole('heading', { name: 'Transcript evidence' }).waitFor();
+    await page.getByRole('tab', { name: 'Transcript', exact: true }).waitFor();
     await page.getByRole('button', { name: '← All meetings' }).click();
     await page.getByRole('button', { name: new RegExp(title) }).click();
-    await page.getByRole('heading', { name: 'Transcript evidence' }).waitFor();
+    await page.getByRole('tab', { name: 'Transcript', exact: true }).waitFor();
     if (process.env.MEETMIND_BERT_SMOKE === '1') {
+      await page.getByRole('tab', { name: 'Technical details', exact: true }).click();
       await page.getByRole('button', { name: 'Analyze with BERT' }).click();
       await page.locator('.dialogue-results article').first().waitFor({ timeout: 180000 });
       assert.equal(await page.locator('.dialogue-results article').count(), 1);
       await page.getByText(/Model score \d/).waitFor();
       await page.reload();
       // Meetings have their own URL now; reload stays on the meeting, then return to the library.
-      await page.getByRole('heading', { name: 'Transcript evidence' }).waitFor();
+      await page.getByRole('tab', { name: 'Transcript', exact: true }).waitFor();
       await page.getByRole('button', { name: '← All meetings' }).click();
       await page.getByRole('button', { name: new RegExp(title) }).click();
       await page.locator('.dialogue-results article').first().waitFor();
@@ -41,7 +42,7 @@ const { signIn } = require('./smoke-session.cjs');
       await page.setViewportSize({ width: 1440, height: 1000 });
       console.log('Real BERT inference, result persistence and mobile layout verified through the browser.');
     }
-    await page.getByRole('link', { name: 'Upload transcript' }).click();
+    await page.getByRole('link', { name: 'Add meeting' }).click();
     for (const name of ['Audio', 'Meeting recording']) {
       await page.getByRole('tab', { name, exact: true }).click();
       const transcriptionHelp = page.getByLabel('Local transcription information', { exact: true });
@@ -60,7 +61,7 @@ const { signIn } = require('./smoke-session.cjs');
       await page.getByLabel('Choose audio file').setInputFiles(process.env.MEETMIND_MEDIA_FIXTURE);
       await page.getByLabel('Meeting title').fill(`Media UI fixture ${Date.now()}`);
       await page.getByRole('button', { name: 'Process meeting' }).click();
-      await page.getByRole('heading', { name: 'Transcript evidence' }).waitFor({ timeout: 180000 });
+      await page.getByRole('tab', { name: 'Transcript', exact: true }).waitFor({ timeout: 180000 });
       assert(await page.getByText(/send the project report by Friday/i).count() > 0);
       console.log('Real audio upload and transcription verified through the browser.');
     }

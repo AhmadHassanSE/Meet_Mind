@@ -19,33 +19,40 @@ const { signIn } = require('./smoke-session.cjs');
     page.on('pageerror', e => errors.push(e.message));
     await signIn(page, base);
     await page.locator('.meeting').filter({ hasText: fixture.title }).click();
-    const panel = page.locator('.workflow');
-    await panel.getByRole('button', { name: 'Start workflow' }).click();
-    // The seeded meeting is already extracted, so the run reuses it and pauses for review.
-    await panel.getByText('Review and approve commitments below').waitFor();
-    assert.equal(await panel.locator('.stages li.current').textContent(), 'Review');
+    const panel = page.locator('.next-step');
+    // The seeded meeting is already extracted, so the next step is reviewing its items.
+    await panel.getByRole('button', { name: 'Go to the first one' }).waitFor();
+    assert.match(await panel.locator('.step-track li.current').textContent(), /Review them/);
     const card = page.locator(`[data-id="${fixture.actions[0].id}"]`);
-    await card.getByRole('button', { name: 'Review / edit' }).click();
     const reviewed = page.waitForResponse(r => r.url().endsWith('/review'));
-    await card.getByRole('button', { name: 'Approve commitment', exact: true }).click();
+    await card.getByRole('button', { name: 'Approve', exact: true }).click();
     assert.equal((await reviewed).status(), 200);
+    // Decide the remaining items so the follow-up step opens.
+    while (await page.locator('.commitment-result.is-pending').count()) {
+      const rejected = page.waitForResponse(r => r.url().endsWith('/review'));
+      await page.locator('.commitment-result.is-pending').first().getByRole('button', { name: 'Reject', exact: true }).click();
+      assert.equal((await rejected).status(), 200);
+    }
+    await panel.getByText('Choose how to follow up').waitFor();
+    assert.match(await panel.locator('.step-track li.current').textContent(), /Follow up/);
     await panel.getByRole('checkbox').first().check();
     await panel.getByLabel(/Recipients for/).fill('sara@example.com');
     await page.screenshot({ path: path.join(runs, 'workflow-review.png'), fullPage: true });
+    // Creating follow-ups starts the workflow run, which reuses the extraction and resumes past review.
     await panel.getByRole('button', { name: /Create 1 follow-up draft/ }).click();
     const outcome = await Promise.race([
-      panel.getByText("Waiting for each owner's decision in My approvals.").waitFor({ timeout: 180000 }).then(() => 'approval'),
-      panel.getByRole('button', { name: 'Retry from this step' }).waitFor({ timeout: 180000 }).then(() => 'failed')]);
+      panel.getByText("Follow-ups are waiting for each owner's approval.").waitFor({ timeout: 180000 }).then(() => 'approval'),
+      panel.getByRole('button', { name: 'Try again' }).waitFor({ timeout: 180000 }).then(() => 'failed')]);
     if (outcome === 'failed') {
       assert.match(await panel.locator('.error').textContent(), /Drafting unavailable|Ollama/);
-      console.log('Workflow UI passed (Ollama unavailable): start, reuse extraction, review pause, recipient choice, visible draft failure with retry.');
+      console.log('Workflow UI passed (Ollama unavailable): review, follow-up start reusing extraction, recipient choice, visible draft failure with retry.');
     } else {
       await page.getByRole('link', { name: /My approvals/ }).click();
       await page.getByRole('button', { name: /your decision/ }).first().click();
       await page.getByRole('button', { name: 'Approve draft', exact: true }).click();
       await page.getByRole('button', { name: 'Open source meeting' }).click();
       await panel.getByText('not configured', { exact: false }).first().waitFor({ timeout: 30000 });
-      assert.equal(await panel.locator('.pill').first().textContent(), 'completed');
+      await panel.getByText('All done for this meeting.', { exact: false }).waitFor();
       console.log('Workflow UI passed (real Ollama): review pause, drafting, owner approval, execution recorded as not configured.');
     }
     await page.screenshot({ path: path.join(runs, 'workflow-result.png'), fullPage: true });

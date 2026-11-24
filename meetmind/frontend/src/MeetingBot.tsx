@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Video, Square, X, ArrowRight } from 'lucide-react';
 import { apiFetch } from './api';
+import { useDetails } from './ui';
 
 type BotSession = { id: string; title: string; meeting_url: string; state: string; message: string;
   recorded_bytes: number; uploaded_chunks: number; remote_tracks: number; elapsed_seconds?: number;
@@ -17,7 +18,11 @@ async function api<T>(path: string, body?: object): Promise<T> {
   return data;
 }
 
-export function MeetingBot({ onReady }: { onReady: (id: string) => Promise<void> }) {
+const stateLabel: Record<string, string> = { needs_login: 'needs sign-in' };
+const showState = (state: string) => stateLabel[state] || state.replaceAll('_', ' ');
+
+export function MeetingBot({ onReady, embedded = false }: { onReady: (id: string) => Promise<void>; embedded?: boolean }) {
+  const details = useDetails();
   const [url, setUrl] = useState('');
   const [title, setTitle] = useState('Google Meet session');
   const [name, setName] = useState('MeetMind Notetaker');
@@ -72,12 +77,11 @@ export function MeetingBot({ onReady }: { onReady: (id: string) => Promise<void>
     catch (e) { setError((e as Error).message); }
     finally { setBusy(false); }
   }
-  return <><div className="page-head"><div><h1>Google Meet browser bot</h1>
-    <p className="muted">Send a separate browser participant into your meeting. The host admits the bot; after recording, MeetMind transcribes locally.</p>
-    <p className="muted">The Chrome extension is still available for recording from your own meeting tab. This bot uses a separate browser window and captures incoming meeting audio with its microphone and camera disabled.</p></div>
-    <span className={`bot-orb${active ? ' live' : ''}`} aria-hidden="true"><Video size={26}/></span></div>
+  return <>{!embedded && <div className="page-head"><div><h1>Live Google Meet</h1>
+    <p className="muted">Send a note-taker into a meeting that is happening now. The host lets it in; when you stop it, MeetMind makes a transcript on this computer.</p></div>
+    <span className={`bot-orb${active ? ' live' : ''}`} aria-hidden="true"><Video size={26}/></span></div>}
     {error && <p role="alert" className="error">{error}</p>}
-    {capabilities && (!capabilities.playwright_installed || !capabilities.ffmpeg_available) && <p className="error">Bot setup is incomplete. Install the backend bot extra, Google Chrome and FFmpeg before starting.</p>}
+    {capabilities && (!capabilities.playwright_installed || !capabilities.ffmpeg_available) && <p className="error">The note-taker isn't set up on this computer yet. Ask whoever installed MeetMind to add the bot extra, Google Chrome and FFmpeg.</p>}
     <form className="panel form" onSubmit={e => { e.preventDefault(); void start(); }}>
       <label>Google Meet link<input type="url" required disabled={active || busy} value={url} onChange={e => setUrl(e.target.value)} placeholder="https://meet.google.com/abc-defg-hij"/></label>
       <label>Meeting title<input required maxLength={200} disabled={active || busy} value={title} onChange={e => setTitle(e.target.value)}/></label>
@@ -87,8 +91,8 @@ export function MeetingBot({ onReady }: { onReady: (id: string) => Promise<void>
       <label className="bot-consent"><input type="checkbox" required disabled={active || busy} checked={consent} onChange={e => setConsent(e.target.checked)}/>The host and participants know this bot will record the meeting audio.</label>
       <button className="primary" disabled={active || busy || !consent || !capabilities?.playwright_installed || !capabilities.ffmpeg_available}><Video size={17}/>{busy ? 'Starting…' : 'Send bot to meeting'}</button>
     </form>
-    {session && <section className="panel bot-status" aria-live="polite"><div className="row"><h2>{session.title}</h2><span className={`pill${session.state==='failed'?' warning':''}`}>{session.state.replaceAll('_',' ')}</span></div>
-      <p>{session.message}</p><p className="muted">{session.uploaded_chunks} audio chunks · {(session.recorded_bytes/1024).toFixed(1)} KB uploaded · {session.remote_tracks} incoming audio tracks</p>
+    {session && <section className="panel bot-status" aria-live="polite"><div className="row"><h2>{session.title}</h2><span className={`pill${session.state==='failed'?' warning':''}`}>{showState(session.state)}</span></div>
+      <p>{session.message}</p>{details && <p className="muted">{session.uploaded_chunks} audio chunks · {(session.recorded_bytes/1024).toFixed(1)} KB uploaded · {session.remote_tracks} incoming audio tracks</p>}
       {session.state==='recording' && session.capture_stats && <>
         <label>Incoming audio level<meter min={0} max={128} value={session.capture_stats.peak || 0} aria-label="Peak incoming audio level"/></label>
         <p className="muted">{(session.capture_stats.peak || 0)>0 ? 'Sound has been detected during this recording.' : 'Waiting for incoming sound. Track count alone does not mean speech is arriving.'}</p>
@@ -103,6 +107,6 @@ export function MeetingBot({ onReady }: { onReady: (id: string) => Promise<void>
       </div>
       {!!session.events.length && <details><summary>Session history</summary>{session.events.map((event,i) => <p className="muted" key={i}>{new Date(event.at).toLocaleTimeString()} · {event.state.replaceAll('_',' ')} · {event.message}</p>)}</details>}
     </section>}
-    {!!sessions.length && <section className="panel bot-history"><h2>Recent bot sessions</h2>{sessions.map(item => <button className="meeting panel" key={item.id} onClick={() => { setSession(item); setId(item.id); }}><div><h3>{item.title}</h3><p className="muted">{item.state.replaceAll('_',' ')}</p></div><ArrowRight size={17}/></button>)}</section>}
+    {!!sessions.length && <section className="panel bot-history"><h2>Recent note-taker sessions</h2>{sessions.map(item => <button className="meeting panel" key={item.id} onClick={() => { setSession(item); setId(item.id); }}><div><h3>{item.title}</h3><p className="muted">{showState(item.state)}</p></div><ArrowRight size={17}/></button>)}</section>}
   </>;
 }

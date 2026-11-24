@@ -6,7 +6,9 @@ const ME = { id: 'smoke-user', email: ACCOUNT.email, name: ACCOUNT.name, role: '
 const ACCESS = { role: 'organizer', can_organize: true, owned_items: [], admin_override: false };
 const RIGHTS = { can_edit: true, can_decide: true, can_override: false, assignee_id: null };
 
-async function signIn(page, base) {
+// Pass { details: true } for checks that need model scores and BERT analysis (the technical details view).
+async function signIn(page, base, { details = false } = {}) {
+  if (details) await page.addInitScript(() => localStorage.setItem('meetmind-details', 'on'));
   const signup = await page.request.post(base + '/api/auth/signup', { data: ACCOUNT });
   if (signup.status() !== 201) {
     const login = await page.request.post(base + '/api/auth/login', { data: { email: ACCOUNT.email, password: ACCOUNT.password } });

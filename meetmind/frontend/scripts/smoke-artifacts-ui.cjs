@@ -72,7 +72,7 @@ const {ACCESS,RIGHTS,sessionData}=require('./smoke-session.cjs');
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
     await page.screenshot({path:path.join(root,'runs/artifacts-mobile.png'),fullPage:true});
     await page.reload();
-    await page.getByRole('link',{name:'Follow-up drafts',exact:true}).click();
+    await page.getByRole('link',{name:'All follow-ups',exact:true}).click();
     await page.getByRole('button',{name:/Report follow-up/}).click();
     await page.waitForFunction(()=>document.querySelector('textarea[aria-label="Message"]')?.value==='Please send the updated report by Friday.');
     assert.equal(await page.getByLabel('Message',{exact:true}).inputValue(),'Please send the updated report by Friday.');

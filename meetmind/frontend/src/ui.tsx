@@ -1,4 +1,19 @@
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+
+/** Whether model scores, pipeline names and diagnostics are shown. Off by default so the everyday
+ *  view stays plain; evaluators switch it on from the top bar. */
+export const DetailsContext = createContext(false);
+export const useDetails = () => useContext(DetailsContext);
+export function useDetailsSetting(): [boolean, () => void] {
+  const [on, setOn] = useState(() => { try { return localStorage.getItem('meetmind-details') === 'on'; } catch { return false; } });
+  useEffect(() => { try { localStorage.setItem('meetmind-details', on ? 'on' : 'off'); } catch { /* storage unavailable */ } }, [on]);
+  return [on, () => setOn(v => !v)];
+}
+
+/** Only renders its children when technical details are switched on. */
+export function TechOnly({ children }: { children: React.ReactNode }) {
+  return useDetails() ? <>{children}</> : null;
+}
 
 /** MeetMind mark from the project poster: a speech bubble holding an "M" drawn as a connected
  *  graph, whose last stroke ends in the gold "execution" node. */

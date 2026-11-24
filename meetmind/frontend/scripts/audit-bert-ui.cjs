@@ -11,9 +11,9 @@ const { signIn } = require('./smoke-session.cjs');
     const page = await browser.newPage({ viewport: { width: 1440, height: 1100 } });
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
-    await signIn(page, process.env.MEETMIND_UI_URL || 'http://127.0.0.1:5173');
+    await signIn(page, process.env.MEETMIND_UI_URL || 'http://127.0.0.1:5173', { details: true });
     for (const [index, fixture] of fixtures.entries()) {
-      await page.getByRole('link', { name: 'Upload transcript', exact: true }).click();
+      await page.getByRole('link', { name: 'Add meeting', exact: true }).click();
       await page.getByRole('tab', { name: 'Transcript file', exact: true }).click();
       const title = `BERT audit ${index + 1} ${fixture.name} ${Date.now()}`;
       await page.getByLabel('Meeting title').fill(title);
@@ -22,6 +22,7 @@ const { signIn } = require('./smoke-session.cjs');
       await page.getByRole('heading', { name: title, exact: true }).waitFor();
       const responsePromise = page.waitForResponse(response => response.url().endsWith('/classify'), { timeout: 180000 });
       const started = Date.now();
+      await page.getByRole('tab', { name: 'Technical details', exact: true }).click();
       await page.getByRole('button', { name: 'Analyze with BERT', exact: true }).click();
       const response = await responsePromise;
       assert.equal(response.status(), 200, await response.text());
@@ -30,21 +31,25 @@ const { signIn } = require('./smoke-session.cjs');
       await page.getByText('Original transcript', { exact: true }).click();
       assert.equal(await page.locator('.preparation pre').textContent(), meeting.original_transcript);
       await page.getByText('Original transcript', { exact: true }).click();
-      await page.locator('.columns section').first().locator('summary').first().click();
+      await page.getByRole('tab', { name: 'Transcript', exact: true }).click();
+      await page.locator('.transcript').locator('summary').first().click();
       const parentId = meeting.segments[0].parent_source_id;
-      assert.equal(await page.locator('.columns section').first().locator('details p').first().textContent(),
+      assert.equal(await page.locator('.transcript').locator('details p').first().textContent(),
         meeting.source_segments.find(source => source.id === parentId).text);
+      await page.getByRole('tab', { name: 'Technical details', exact: true }).click();
       await page.locator('.dialogue-results article').first().waitFor();
       assert.equal(await page.locator('.dialogue-results article').count(), fixture.segments);
       assert.equal(meeting.dialogue_analysis.predictions.length, fixture.segments);
       if (meeting.dialogue_analysis.predictions.some(prediction => prediction.target_text_truncated)) {
+        await page.getByRole('tab', { name: 'Technical details', exact: true }).click();
         await page.locator('.dialogue-results .mint').filter({ hasText: 'target text truncated' }).first().waitFor();
       }
       await page.reload();
       // Meetings have their own URL now; reload stays on the meeting, then return to the library.
-      await page.getByRole('heading', { name: 'Transcript evidence' }).waitFor();
+      await page.getByRole('tab', { name: 'Transcript', exact: true }).waitFor();
       await page.getByRole('button', { name: '← All meetings' }).click();
       await page.getByRole('button', { name: new RegExp(title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')) }).click();
+      await page.getByRole('tab', { name: 'Technical details', exact: true }).click();
       await page.locator('.dialogue-results article').first().waitFor();
       assert.equal(await page.locator('.dialogue-results article').count(), fixture.segments);
       await page.setViewportSize({ width: 390, height: 844 });

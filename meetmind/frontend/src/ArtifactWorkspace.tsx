@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ArrowRight, Mail, Ticket } from 'lucide-react';
+import { Mail, Ticket } from 'lucide-react';
 import type { Commitment } from './CommitmentResults';
 import { api } from './api';
 
@@ -86,10 +86,9 @@ export function ArtifactWorkspace({source, onMeeting, queue=false}: {source: Dra
   const second=Boolean(draft && partial.length && draft.policy.approvals_required>1 && draft.rights.can_organize);
   const override=Boolean(draft && !draft.rights.can_decide && !second && draft.rights.can_override);
   const decidable=open && Boolean(draft && (draft.rights.can_decide || second || override));
-  return <><div className="page-head"><div><h1>{queue ? 'My approvals' : 'Follow-up drafts'}</h1>
-    <p className="muted">{queue ? 'Drafts for action items you own (or organize without an owner) that are waiting for your decision.'
-      : 'Create an email or Jira ticket from an approved commitment, check its content and recipients, then the item owner approves or rejects the draft.'}</p></div>
-    <div className="gate-steps" aria-hidden="true"><span>Draft</span><ArrowRight size={14}/><span>Policy check</span><ArrowRight size={14}/><span className="on">Owner approves</span><ArrowRight size={14}/><span>Sent once</span></div></div>
+  return <><div className="page-head"><div><h1>{queue ? 'My approvals' : 'All follow-ups'}</h1>
+    <p className="muted">{queue ? 'Emails and tickets for your action items. Read each one, then approve it to send, or reject it.'
+      : 'Every follow-up email and Jira ticket. Nothing is sent until the owner of the action item approves it.'}</p></div></div>
     {error && <p role="alert" className="error">{error}</p>}
     {source && !queue && <form className="panel form" onSubmit={e=>{e.preventDefault();void create();}}>
       <h2>Create follow-up</h2><p dir="auto">{source.commitment.task}</p>
@@ -99,8 +98,8 @@ export function ArtifactWorkspace({source, onMeeting, queue=false}: {source: Dra
       <small className="muted">{source.commitment.assignee ? `Suggested from the linked owner account (${source.commitment.assignee.name}). Confirm before generating.` : 'Enter recipients explicitly; an owner\'s name is not an email address.'}</small></>}
       <button className="primary" disabled={busy || (channel==='email' && !recipients.trim())}>{busy ? 'Generating locally…' : channel==='jira' ? 'Generate ticket draft' : 'Generate email draft'}</button>
     </form>}
-    {!source && !draft && !queue && <p className="muted">Open a meeting, approve a commitment and choose “Draft follow-up” to create an email.</p>}
-    <div className="artifact-layout"><section className="panel artifact-list"><div className="row"><h2>{queue ? 'Waiting for you' : 'Saved drafts'}</h2><button onClick={()=>void refresh().catch(e=>setError(e.message))}>Refresh</button></div>
+    {!source && !draft && !queue && <p className="muted">To create one, open a meeting and finish reviewing its action items.</p>}
+    <div className="artifact-layout"><section className="panel artifact-list"><div className="row"><h2>{queue ? 'Waiting for you' : 'Follow-ups'}</h2><button onClick={()=>void refresh().catch(e=>setError(e.message))}>Refresh</button></div>
       {!drafts.length && <p className="muted">{queue ? 'Nothing is waiting for your approval.' : 'No drafts yet.'}</p>}
       {drafts.map((item,index)=><button className={`artifact-entry spot tone-${tone(item)}${draft?.id===item.id ? ' selected' : ''}`} style={{'--i':Math.min(index,10)} as React.CSSProperties} key={item.id} aria-current={draft?.id===item.id ? 'true' : undefined} onClick={()=>{setDraft(item);setError('');}}>
         <span className="entry-icon" aria-hidden="true">{item.channel==='jira' ? <Ticket size={16}/> : <Mail size={16}/>}</span>
@@ -109,7 +108,7 @@ export function ArtifactWorkspace({source, onMeeting, queue=false}: {source: Dra
     </section>
     {!draft && <section className="panel artifact-placeholder"><span className="empty-mark" aria-hidden="true"><Mail size={26}/></span><p className="muted">{drafts.length ? 'Choose a draft on the left to read and decide on it.' : queue ? 'When an owner decision is needed, the draft appears here.' : 'Drafts you create appear here for review.'}</p></section>}
     {draft && <section key={draft.id} className={`panel artifact-detail tone-${tone(draft)}`}><div className="row"><h2>{draft.channel==='jira' ? 'Jira ticket draft' : 'Email draft'}</h2><span className={`pill${tone(draft)==='ok' ? ' ok' : tone(draft)==='bad' ? ' bad' : tone(draft)==='wait' ? ' warning' : ' quiet'}`}>{draft.status==='approved' && !draft.approval_valid ? 'Approval outdated' : labels[draft.status] || draft.status}</span></div>
-      <p className="muted">Source commitment: <span dir="auto">{draft.source.task}</span></p>
+      <p className="muted">Action item: <span dir="auto">{draft.source.task}</span></p>
       <p className="muted">Owner: {draft.source.owner || 'Unresolved'} · Due: {draft.source.deadline || 'Unresolved'}</p>
       {draft.source.evidence.map((e,i)=><blockquote dir="auto" key={i}>{e.quote}</blockquote>)}
       {!draft.source_current && <p role="status" className="error">The source commitment changed. Review it in the meeting and create a new draft.</p>}
@@ -136,7 +135,7 @@ export function ArtifactWorkspace({source, onMeeting, queue=false}: {source: Dra
       </form>
       <button onClick={()=>onMeeting(draft.meeting_id)}>Open source meeting</button>
       <button disabled={busy} onClick={()=>void api<Draft>(`/artifacts/${draft.id}`).then(setDraft).catch(e=>setError(e.message))}>Reload draft</button>
-      <details><summary>Draft history ({draft.history.length})</summary>{draft.history.map((event,i)=><p key={i}><strong>{event.action.replaceAll('_',' ')}</strong> · {new Date(event.at).toLocaleString()}{event.actor && ` · ${event.actor}`}{event.admin_override ? ' · admin override' : ''}{event.note && ` · ${event.note}`}</p>)}</details>
+      <details><summary>History ({draft.history.length})</summary>{draft.history.map((event,i)=><p key={i}><strong>{event.action.replaceAll('_',' ')}</strong> · {new Date(event.at).toLocaleString()}{event.actor && ` · ${event.actor}`}{event.admin_override ? ' · admin override' : ''}{event.note && ` · ${event.note}`}</p>)}</details>
     </section>}</div>
   </>;
 }
